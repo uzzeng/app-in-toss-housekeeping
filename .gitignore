@@ -24,3 +24,11 @@ dist-ssr
 *.sw?
 
 *.ait
+
+# Secrets / certificates (mTLS, env)
+*.key
+*.crt
+*.pem
+.env
+.env.*
+!.env.example

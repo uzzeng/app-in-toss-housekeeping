@@ -1,11 +1,11 @@
-import { useState } from 'react'
 import reactLogo from './assets/react.svg'
 import viteLogo from './assets/vite.svg'
 import heroImg from './assets/hero.png'
 import './App.css'
+import { useCurrentUser } from './hooks/useAnonymousKey'
 
 function App() {
-  const [count, setCount] = useState(0)
+  const currentUser = useCurrentUser()
 
   return (
     <>
@@ -21,13 +21,11 @@ function App() {
             Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
           </p>
         </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
+        <p>
+          {currentUser.status === 'loading' && '사용자 식별 중...'}
+          {currentUser.status === 'success' && `식별 완료: user_id=${currentUser.user.id}`}
+          {currentUser.status === 'error' && `식별 실패: ${currentUser.reason}`}
+        </p>
       </section>
 
       <div className="ticks"></div>
