@@ -160,6 +160,8 @@
 - 클라이언트는 Supabase에 직접 접근하지 않고, 항상 서버(Edge Function)를 거쳐서 데이터에 접근함. 서버가 익명 키를 검증하고 그 사용자의 데이터만 접근하도록 하며, Supabase RLS는 서버(service_role)만 전체 접근 가능하도록 잠가둠
 - 토스 로그인 특유의 "연결 해제 콜백/30일 유예 삭제" 개념은 익명키 방식에는 해당하지 않아 적용하지 않음 (사업자등록 후 토스 로그인으로 전환하게 되면 재검토 필요)
 
+> **2026-08-12 구현 완료**: 위 방식대로 실제 구현 및 배포까지 완료. 프론트엔드(`src/hooks/useAnonymousKey.ts`의 `useCurrentUser()`)가 `User.getAnonymousKey()` 호출 후 서버로 검증을 요청하고, 서버(Supabase Edge Function `verify-user`)가 mTLS로 앱인토스 검증 API를 호출한 뒤 `users` 테이블에 upsert하는 흐름까지 배포 완료. mTLS 인증서 발급도 완료(콘솔 "mTLS 인증서" 메뉴). 다만 로컬 브라우저는 SDK 네이티브 브릿지가 없어 실제 익명키를 받을 수 없으므로, 전체 흐름의 최종 검증은 실기기 QR 테스트로 남아 있음.
+
 ## 데이터 모델 초안
 
 지금까지 확정된 화면/알림 로직을 기준으로 정리한 초안. 실제 구현 시 세부 타입/제약조건은 조정될 수 있음.
@@ -253,3 +255,4 @@
 | 2026-08-11 | 개발 착수: 백엔드 스택 Supabase(PostgreSQL) + Edge Functions + pg_cron으로 확정. 앱인토스 콘솔에 앱 등록 완료, 최초알림/재알림 푸시 템플릿 2건 등록 및 심사 승인 완료 |
 | 2026-08-11 | 회원가입/로그인 플로우 재변경: 토스 로그인은 사업자등록이 필수임을 확인. 사업자등록 없이 진행하기 위해 토스 로그인 방식을 폐기하고 **앱인토스 SDK 익명 식별키(`getAnonymousKey`) 방식으로 전환**. 이에 따라 "로그인 연결 해제 시 30일 유예 삭제" 정책과 데이터 모델의 `unlinked_at` 필드를 제거하고, `anon_key` 필드로 대체. 클라이언트는 Supabase에 직접 접근하지 않고 항상 서버(Edge Function)를 거치는 구조로 확정 |
 | 2026-08-11 | 데이터 모델: Supabase에 `users`/`chores`/`chore_occurrences` 테이블 실제 생성 완료 (RLS: service_role만 전체 접근) |
+| 2026-08-12 | mTLS 인증서 발급 완료 (앱인토스 콘솔). 회원가입/로그인 플로우 실제 구현 완료: 프론트엔드 `useCurrentUser()` 훅과 서버 `verify-user` Edge Function을 개발/배포하여 익명키 검증 → `users` 테이블 upsert까지 흐름 연결. Supabase Edge Function에서 mTLS 클라이언트 인증서 통신이 정상 동작함을 실제 배포로 검증 (사전 조사에서 우려됐던 미지원 가능성은 기우로 확인됨) |
