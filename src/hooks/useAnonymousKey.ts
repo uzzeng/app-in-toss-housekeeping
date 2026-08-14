@@ -3,6 +3,7 @@ import { User } from '@apps-in-toss/web-framework';
 
 export interface CurrentUser {
   id: string;
+  anonKey: string;
   notification_time: string;
   reminder_time: string;
   reminder_time_enabled: boolean;
@@ -15,6 +16,7 @@ type CurrentUserState =
   | {
       status: 'error';
       reason: 'UNSUPPORTED_APP_VERSION' | 'UNKNOWN_ERROR' | 'VERIFY_FAILED';
+      detail: string;
     };
 
 async function verifyUser(anonKey: string): Promise<CurrentUser> {
@@ -31,11 +33,12 @@ async function verifyUser(anonKey: string): Promise<CurrentUser> {
   );
 
   if (!res.ok) {
-    throw new Error(`verify-user failed with status ${res.status}`);
+    const body = await res.text().catch(() => '');
+    throw new Error(`verify-user failed with status ${res.status}: ${body}`);
   }
 
   const { user } = await res.json();
-  return user as CurrentUser;
+  return { ...user, anonKey } as CurrentUser;
 }
 
 // 앱 진입 시 익명 식별키를 발급받고, 서버에서 검증/매핑해 현재 사용자 정보를 반환한다.
@@ -53,7 +56,8 @@ export function useCurrentUser(): CurrentUserState {
       .catch((error: unknown) => {
         const reason =
           error === 'UNSUPPORTED_APP_VERSION' ? 'UNSUPPORTED_APP_VERSION' : 'VERIFY_FAILED';
-        if (!cancelled) setState({ status: 'error', reason });
+        const detail = error instanceof Error ? error.message : String(error);
+        if (!cancelled) setState({ status: 'error', reason, detail });
       });
 
     return () => {

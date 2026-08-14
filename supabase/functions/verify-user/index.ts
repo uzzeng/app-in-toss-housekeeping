@@ -34,7 +34,8 @@ async function verifyAnonKey(anonKey: string): Promise<boolean> {
   if (!res.ok) return false;
 
   const body = await res.json();
-  return body?.resultType === "SUCCESS" && body?.success === "true";
+  // 문서 예시는 success: "true"(문자열)였지만 실제 응답은 boolean true로 내려옴 — 둘 다 안전하게 처리
+  return body?.resultType === "SUCCESS" && String(body?.success) === "true";
 }
 
 export default {
