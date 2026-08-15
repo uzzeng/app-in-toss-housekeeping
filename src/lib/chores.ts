@@ -5,6 +5,12 @@ export type RepeatMode = 'fixed_date' | 'interval';
 export type IntervalUnit = 'day' | 'week';
 export type FixedUnit = 'month' | 'year';
 
+export const CHORE_TYPE_LABEL: Record<ChoreType, string> = {
+  general: '일반 반복형',
+  annual_fixed: '연1회 고정시즌형',
+  one_time: '수시 등록형',
+};
+
 export interface Chore {
   id: string;
   user_id: string;

@@ -1,3 +1,5 @@
+import type { ChoreType } from './chores';
+
 const FUNCTIONS_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`;
 
 export interface Occurrence {
@@ -11,7 +13,7 @@ export interface Occurrence {
   chores: {
     id: string;
     name: string;
-    type: string;
+    type: ChoreType;
     user_id: string;
   };
 }
@@ -45,6 +47,29 @@ export async function fetchWeekOccurrences(anonKey: string): Promise<Occurrence[
   );
   const { occurrences } = await parseOrThrow<{ occurrences: Occurrence[] }>(res);
   return occurrences;
+}
+
+export async function fetchMonthOccurrences(anonKey: string, month: string): Promise<Occurrence[]> {
+  const res = await fetch(
+    `${FUNCTIONS_URL}/occurrences?anonKey=${encodeURIComponent(anonKey)}&range=month&month=${month}`,
+    { headers },
+  );
+  const { occurrences } = await parseOrThrow<{ occurrences: Occurrence[] }>(res);
+  return occurrences;
+}
+
+export async function addManualOccurrence(
+  anonKey: string,
+  choreId: string,
+  date: string,
+): Promise<Occurrence> {
+  const res = await fetch(`${FUNCTIONS_URL}/occurrences?anonKey=${encodeURIComponent(anonKey)}`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ choreId, date }),
+  });
+  const { occurrence } = await parseOrThrow<{ occurrence: Occurrence }>(res);
+  return occurrence;
 }
 
 export async function setOccurrenceCompleted(

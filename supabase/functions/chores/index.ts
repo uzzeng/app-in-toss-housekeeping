@@ -155,6 +155,30 @@ export default {
         .single();
 
       if (error) return Response.json({ error: error.message }, { status: 500 });
+
+      // 반복 규칙이 바뀐 경우, 옛 규칙으로 이미 생성된 미래 미완료 예정은 더 이상 맞지 않으므로
+      // 지운다. 다음 occurrences 조회 시 ensureOccurrencesUpTo가 새 규칙으로 재생성한다.
+      const SCHEDULE_FIELDS = [
+        "type",
+        "repeat_mode",
+        "interval_value",
+        "interval_unit",
+        "fixed_unit",
+        "fixed_month",
+        "fixed_day",
+        "start_date",
+      ];
+      const scheduleChanged = Object.keys(body).some((key) => SCHEDULE_FIELDS.includes(key));
+      if (scheduleChanged) {
+        const today = new Date().toISOString().slice(0, 10);
+        await ctx.supabaseAdmin
+          .from("chore_occurrences")
+          .delete()
+          .eq("chore_id", id)
+          .eq("status", "pending")
+          .gte("scheduled_date", today);
+      }
+
       return Response.json({ chore: data });
     }
 

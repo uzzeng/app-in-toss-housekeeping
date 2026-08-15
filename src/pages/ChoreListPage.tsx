@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { Button, Checkbox } from '@toss/tds-mobile';
 import { useCurrentUser } from '../hooks/useAnonymousKey';
 import {
+  CHORE_TYPE_LABEL,
   createChore,
   deleteChore,
   fetchChores,
@@ -13,12 +14,6 @@ import {
   type IntervalUnit,
   type RepeatMode,
 } from '../lib/chores';
-
-const TYPE_LABEL: Record<ChoreType, string> = {
-  general: '일반 반복형',
-  annual_fixed: '연1회 고정시즌형',
-  one_time: '수시 등록형',
-};
 
 function describeChore(chore: Chore): string {
   if (chore.type === 'one_time') return `${chore.start_date} (1회)`;
@@ -223,7 +218,7 @@ export function ChoreListPage() {
               >
                 <div>{chore.name}</div>
                 <div style={{ fontSize: 13, color: '#888' }}>
-                  {TYPE_LABEL[chore.type]} · {describeChore(chore)}
+                  {CHORE_TYPE_LABEL[chore.type]} · {describeChore(chore)}
                 </div>
               </button>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>

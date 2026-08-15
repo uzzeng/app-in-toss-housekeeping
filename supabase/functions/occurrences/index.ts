@@ -1,5 +1,6 @@
 // 집안일 예정일(occurrence) 계산/조회/완료 처리.
 // - GET  /occurrences?range=today|week — 오늘 할 일 / 앞으로 7일 예정 조회 (조회 전 각 chore의 "다음 occurrence"가 없으면 생성)
+// - GET  /occurrences?range=month&month=YYYY-MM — 캘린더용 월간 조회 (완료는 completed_date, 미완료는 scheduled_date가 해당 월에 속하면 표시)
 // - POST /occurrences/complete { occurrenceId, completedDate? } — 완료 처리 (재탭 시 해제 가능하도록 토글)
 import "@supabase/functions-js/edge-runtime.d.ts";
 import { withSupabase } from "@supabase/server";
@@ -27,6 +28,16 @@ function addDays(dateStr: string, days: number): string {
   const d = new Date(`${dateStr}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() + days);
   return toDateOnly(d);
+}
+
+// "YYYY-MM" 형태의 month 파라미터가 유효한지 확인하고 [월초, 월말] 날짜를 반환
+function monthRange(monthParam: string | null): { start: string; end: string } | null {
+  if (!monthParam || !/^\d{4}-\d{2}$/.test(monthParam)) return null;
+  const [year, month] = monthParam.split("-").map(Number);
+  if (month < 1 || month > 12) return null;
+  const start = `${monthParam}-01`;
+  const end = `${monthParam}-${String(lastDayOfMonth(year, month)).padStart(2, "0")}`;
+  return { start, end };
 }
 
 function lastDayOfMonth(year: number, month1to12: number): number {
@@ -170,8 +181,56 @@ export default {
     const userId = user.id as string;
 
     if (req.method === "GET") {
-      const range = url.searchParams.get("range") === "week" ? "week" : "today";
+      const rangeParam = url.searchParams.get("range");
       const today = toDateOnly(new Date());
+
+      if (rangeParam === "month") {
+        const monthWindow = monthRange(url.searchParams.get("month"));
+        if (!monthWindow) {
+          return Response.json({ error: "month 파라미터가 필요해요 (형식: YYYY-MM)." }, { status: 400 });
+        }
+
+        // 캘린더는 지나간 달을 조회할 수도 있으므로, occurrence 생성은 오늘 이후(현재/미래) 달에만 수행.
+        if (monthWindow.end >= today) {
+          const { data: activeChores, error: choresError } = await ctx.supabaseAdmin
+            .from("chores")
+            .select("*")
+            .eq("user_id", userId)
+            .eq("is_active", true);
+
+          if (choresError) return Response.json({ error: choresError.message }, { status: 500 });
+
+          for (const chore of (activeChores ?? []) as Chore[]) {
+            await ensureOccurrencesUpTo(ctx.supabaseAdmin, chore, monthWindow.end, today);
+          }
+        }
+
+        // 완료 항목은 completed_date 기준, 미완료 항목은 scheduled_date 기준으로 그 달에 속하면 표시 (PRD 규칙)
+        const [{ data: doneData, error: doneError }, { data: pendingData, error: pendingError }] = await Promise.all([
+          ctx.supabaseAdmin
+            .from("chore_occurrences")
+            .select("*, chores!inner(id, name, type, user_id)")
+            .eq("chores.user_id", userId)
+            .eq("status", "done")
+            .gte("completed_date", monthWindow.start)
+            .lte("completed_date", monthWindow.end),
+          ctx.supabaseAdmin
+            .from("chore_occurrences")
+            .select("*, chores!inner(id, name, type, user_id)")
+            .eq("chores.user_id", userId)
+            .eq("status", "pending")
+            .gte("scheduled_date", monthWindow.start)
+            .lte("scheduled_date", monthWindow.end),
+        ]);
+
+        if (doneError) return Response.json({ error: doneError.message }, { status: 500 });
+        if (pendingError) return Response.json({ error: pendingError.message }, { status: 500 });
+
+        const combined = [...(doneData ?? []), ...(pendingData ?? [])];
+        return Response.json({ occurrences: combined });
+      }
+
+      const range = rangeParam === "week" ? "week" : "today";
       const untilDate = range === "week" ? addDays(today, 7) : today;
 
       const { data: activeChores, error: choresError } = await ctx.supabaseAdmin
@@ -209,7 +268,58 @@ export default {
 
     if (req.method === "POST") {
       const body = await req.json();
-      const { occurrenceId, completed } = body as { occurrenceId?: string; completed?: boolean };
+      const { occurrenceId, completed, choreId, date } = body as {
+        occurrenceId?: string;
+        completed?: boolean;
+        choreId?: string;
+        date?: string;
+      };
+
+      // 수기 입력: 특정 날짜에 "예정에 없이" 완료한 집안일을 새 occurrence로 기록한다.
+      // (캘린더에서 날짜를 선택하고 "이날 한 집안일 추가"로 진입하는 경로)
+      if (typeof choreId === "string" && typeof date === "string") {
+        const { data: chore, error: choreError } = await ctx.supabaseAdmin
+          .from("chores")
+          .select("*")
+          .eq("id", choreId)
+          .eq("user_id", userId)
+          .eq("is_active", true)
+          .single();
+
+        if (choreError || !chore) {
+          return Response.json({ error: "해당 집안일을 찾을 수 없어요." }, { status: 404 });
+        }
+
+        const { data, error } = await ctx.supabaseAdmin
+          .from("chore_occurrences")
+          .insert({
+            chore_id: choreId,
+            scheduled_date: date,
+            status: "done",
+            completed_date: date,
+            completion_type: "manual",
+          })
+          .select("*, chores!inner(id, name, type, user_id)")
+          .single();
+
+        if (error) return Response.json({ error: error.message }, { status: 500 });
+
+        // 수기 입력 날짜 이후로 이미 생성돼 있던 미완료 예정 건은 이 날짜를 기준으로 다시 계산해야
+        // 맞으므로 지우고, ensureOccurrencesUpTo가 새 기준일(date)로 다음 회차를 재생성하게 한다.
+        await ctx.supabaseAdmin
+          .from("chore_occurrences")
+          .delete()
+          .eq("chore_id", choreId)
+          .eq("status", "pending")
+          .gt("scheduled_date", date);
+
+        // range=month 조회 시 캘린더에서 바로 다음 회차가 보이도록 넉넉히(약 한 달) 재계산한다.
+        const today = toDateOnly(new Date());
+        await ensureOccurrencesUpTo(ctx.supabaseAdmin, chore as Chore, addDays(today, 35), today);
+
+        return Response.json({ occurrence: data });
+      }
+
       if (typeof occurrenceId !== "string") {
         return Response.json({ error: "occurrenceId가 필요해요." }, { status: 400 });
       }
