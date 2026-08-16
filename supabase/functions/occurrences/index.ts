@@ -200,9 +200,11 @@ export default {
 
           if (choresError) return Response.json({ error: choresError.message }, { status: 500 });
 
-          for (const chore of (activeChores ?? []) as Chore[]) {
-            await ensureOccurrencesUpTo(ctx.supabaseAdmin, chore, monthWindow.end, today);
-          }
+          await Promise.all(
+            ((activeChores ?? []) as Chore[]).map((chore) =>
+              ensureOccurrencesUpTo(ctx.supabaseAdmin, chore, monthWindow.end, today),
+            ),
+          );
         }
 
         // 완료 항목은 completed_date 기준, 미완료 항목은 scheduled_date 기준으로 그 달에 속하면 표시 (PRD 규칙)
@@ -241,9 +243,11 @@ export default {
 
       if (choresError) return Response.json({ error: choresError.message }, { status: 500 });
 
-      for (const chore of (activeChores ?? []) as Chore[]) {
-        await ensureOccurrencesUpTo(ctx.supabaseAdmin, chore, untilDate, today);
-      }
+      await Promise.all(
+        ((activeChores ?? []) as Chore[]).map((chore) =>
+          ensureOccurrencesUpTo(ctx.supabaseAdmin, chore, untilDate, today),
+        ),
+      );
 
       let query = ctx.supabaseAdmin
         .from("chore_occurrences")

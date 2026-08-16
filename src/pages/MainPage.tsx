@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Checkbox } from '@toss/tds-mobile';
+import { Asset, List, ListRow, Post } from '@toss/tds-mobile';
+import { adaptive } from '@toss/tds-colors';
 import { useCurrentUser } from '../hooks/useAnonymousKey';
 import {
   fetchTodayOccurrences,
@@ -8,21 +9,9 @@ import {
   type Occurrence,
 } from '../lib/occurrences';
 
-const WEEKDAY = ['일', '월', '화', '수', '목', '금', '토'];
-
 function formatDateLabel(dateStr: string): string {
   const d = new Date(`${dateStr}T00:00:00`);
-  return `${d.getMonth() + 1}/${d.getDate()}(${WEEKDAY[d.getDay()]})`;
-}
-
-function groupByDate(occurrences: Occurrence[]): [string, Occurrence[]][] {
-  const map = new Map<string, Occurrence[]>();
-  for (const o of occurrences) {
-    const list = map.get(o.scheduled_date) ?? [];
-    list.push(o);
-    map.set(o.scheduled_date, list);
-  }
-  return [...map.entries()].sort(([a], [b]) => a.localeCompare(b));
+  return `${d.getMonth() + 1}.${d.getDate()}`;
 }
 
 export function MainPage() {
@@ -78,66 +67,94 @@ export function MainPage() {
     );
   }
 
+  const remaining = today.filter((o) => o.status !== 'done').length;
+
   return (
-    <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 16 }}>
+    <div style={{ padding: '12px 16px 16px' }}>
       {errorMessage && <p style={{ color: 'red' }}>{errorMessage}</p>}
 
       {loading ? (
         <p>불러오는 중...</p>
       ) : (
         <>
-          {/* 박스1: 오늘 할 일 */}
-          <section style={{ border: '1px solid #eee', borderRadius: 16, padding: 16 }}>
+          <p style={{ margin: 0, fontSize: 22, fontWeight: 'bold', color: adaptive.grey900 }}>Housekeeping!</p>
+
+          <div style={{ display: 'flex', justifyContent: 'center', padding: '8px 0 20px' }}>
+            <Asset.Image
+              frameShape={{ width: 160 }}
+              backgroundColor="transparent"
+              src={remaining === 0 ? '/character-happy.png' : '/character-sad.png'}
+              aria-hidden={true}
+              style={{ aspectRatio: '1/1' }}
+            />
+          </div>
+
+          {/* 오늘 할 일 */}
+          <div style={{ border: `1px solid ${adaptive.grey100}`, borderRadius: 16, padding: '16px 0', marginBottom: 16 }}>
             {today.length === 0 ? (
-              <p>오늘은 집안일이 없어요.</p>
+              <Post.H4 paddingBottom={0} style={{ padding: '0 16px' }} color={adaptive.greyOpacity900}>
+                오늘은 집안일이 없어요.
+              </Post.H4>
             ) : (
               <>
-                <p style={{ fontWeight: 'bold', marginBottom: 8 }}>
-                  {(() => {
-                    const remaining = today.filter((o) => o.status !== 'done').length;
-                    return remaining === 0
-                      ? '오늘 집안일을 모두 완료했습니다!'
-                      : `오늘 해야할 일 ${remaining}개가 남았어요!`;
-                  })()}
-                </p>
-                <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                <Post.H4 paddingBottom={16} style={{ padding: '0 16px 16px' }} color={adaptive.greyOpacity900}>
+                  {remaining === 0 ? '오늘 집안일을 모두 완료했습니다!' : `오늘 해야할 일 ${remaining}개가 남았어요!`}
+                </Post.H4>
+                <List>
                   {today.map((o) => {
                     const isDone = o.status === 'done';
                     return (
-                      <li
+                      <ListRow
                         key={o.id}
-                        style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0' }}
-                      >
-                        <Checkbox.Circle checked={isDone} onCheckedChange={() => handleToggle(o)} />
-                        <span style={{ color: isDone ? '#aaa' : undefined }}>{o.chores.name}</span>
-                      </li>
+                        onClick={() => handleToggle(o)}
+                        left={
+                          <ListRow.AssetIcon
+                            size="xsmall"
+                            shape="original"
+                            variant={isDone ? 'none' : 'fill'}
+                            name={isDone ? 'icon-check-circle-blue' : 'icon-check-light-grey-fill'}
+                          />
+                        }
+                        contents={
+                          <ListRow.Texts
+                            type="1RowTypeA"
+                            top={o.chores.name}
+                            topProps={{ color: isDone ? adaptive.grey400 : adaptive.grey700 }}
+                          />
+                        }
+                        verticalPadding="small"
+                        horizontalPadding="small"
+                      />
                     );
                   })}
-                </ul>
+                </List>
               </>
             )}
-          </section>
+          </div>
 
-          {/* 박스2: 앞으로 일주일 예정된 일 (보기 전용) */}
-          <section style={{ border: '1px solid #eee', borderRadius: 16, padding: 16 }}>
-            <p style={{ fontWeight: 'bold', marginBottom: 8 }}>이번 주 예정</p>
+          {/* 앞으로 일주일 예정된 일 (보기 전용) */}
+          <div style={{ border: `1px solid ${adaptive.grey100}`, borderRadius: 16, padding: '16px 0' }}>
+            <Post.H4 paddingBottom={16} style={{ padding: '0 16px 16px' }} color={adaptive.greyOpacity900}>
+              예정된 집안일
+            </Post.H4>
             {week.length === 0 ? (
-              <p style={{ color: '#888' }}>앞으로 일주일간 예정된 집안일이 없어요.</p>
+              <p style={{ color: adaptive.grey500, padding: '0 16px' }}>앞으로 일주일간 예정된 집안일이 없어요.</p>
             ) : (
-              groupByDate(week).map(([date, items]) => (
-                <div key={date} style={{ marginBottom: 8 }}>
-                  <div style={{ fontSize: 13, color: '#888' }}>{formatDateLabel(date)}</div>
-                  <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-                    {items.map((o) => (
-                      <li key={o.id} style={{ padding: '4px 0' }}>
-                        {o.chores.name}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ))
+              <List>
+                {week.map((o) => (
+                  <ListRow
+                    key={o.id}
+                    left={<ListRow.LeftText>{formatDateLabel(o.scheduled_date)}</ListRow.LeftText>}
+                    contents={
+                      <ListRow.Texts type="1RowTypeA" top={o.chores.name} topProps={{ color: adaptive.grey700 }} />
+                    }
+                    verticalPadding="small"
+                    horizontalPadding="small"
+                  />
+                ))}
+              </List>
             )}
-          </section>
+          </div>
         </>
       )}
     </div>

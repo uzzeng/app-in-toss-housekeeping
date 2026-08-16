@@ -1,23 +1,25 @@
 import { NavLink } from 'react-router-dom';
+import { Asset, Text } from '@toss/tds-mobile';
+import { adaptive } from '@toss/tds-colors';
 
 const TABS = [
-  { to: '/', label: '홈' },
-  { to: '/chores', label: '집안일 리스트' },
-  { to: '/calendar', label: '캘린더' },
-];
+  { to: '/', label: '홈', icon: 'icon-home-mono' },
+  { to: '/calendar', label: '캘린더', icon: 'icon-calendar-check-mono' },
+  { to: '/chores', label: '집안일', icon: 'icon-line-three-dots-mono-02' },
+] as const;
 
-// TODO: 앱빌더 시안 나오면 스타일(아이콘 포함)만 교체 예정. 구조는 그대로 유지.
 export function BottomNav() {
   return (
     <nav
       style={{
         position: 'fixed',
-        bottom: 0,
-        left: 0,
-        right: 0,
+        bottom: 'calc(12px + env(safe-area-inset-bottom))',
+        left: 12,
+        right: 12,
         display: 'flex',
-        borderTop: '1px solid #eee',
+        borderRadius: 24,
         background: '#fff',
+        boxShadow: '0 2px 12px rgba(0, 0, 0, 0.08)',
       }}
     >
       {TABS.map((tab) => (
@@ -25,16 +27,32 @@ export function BottomNav() {
           key={tab.to}
           to={tab.to}
           end={tab.to === '/'}
-          style={({ isActive }) => ({
+          style={{
             flex: 1,
-            textAlign: 'center',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: 4,
             padding: '12px 0',
-            fontSize: 13,
-            color: isActive ? '#3182F6' : '#888',
-            fontWeight: isActive ? 'bold' : 'normal',
-          })}
+          }}
         >
-          {tab.label}
+          {({ isActive }) => {
+            const color = isActive ? adaptive.grey800 : adaptive.grey400;
+            return (
+              <>
+                <Asset.Icon frameShape={Asset.frameShape.CleanW24} name={tab.icon} color={color} aria-hidden={true} />
+                <Text
+                  display="block"
+                  color={color}
+                  typography="st13"
+                  fontWeight="medium"
+                  textAlign="center"
+                >
+                  {tab.label}
+                </Text>
+              </>
+            );
+          }}
         </NavLink>
       ))}
     </nav>

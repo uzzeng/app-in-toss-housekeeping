@@ -3,7 +3,7 @@ import { BottomNav } from './BottomNav';
 
 export function AppLayout() {
   return (
-    <div style={{ paddingBottom: 56 }}>
+    <div style={{ paddingBottom: 'calc(88px + env(safe-area-inset-bottom))' }}>
       <Outlet />
       <BottomNav />
     </div>
