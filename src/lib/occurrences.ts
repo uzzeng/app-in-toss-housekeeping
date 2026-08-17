@@ -10,6 +10,8 @@ export interface Occurrence {
   completed_date: string | null;
   completion_type: 'regular' | 'manual' | null;
   reminder_count: number;
+  // 캘린더 월간 조회에서만 채워짐: 그 chore의 가장 최근 완료건에만 존재 (그 외에는 undefined/null)
+  next_scheduled_date?: string | null;
   chores: {
     id: string;
     name: string;
@@ -72,15 +74,25 @@ export async function addManualOccurrence(
   return occurrence;
 }
 
+export async function deleteManualOccurrence(anonKey: string, occurrenceId: string): Promise<void> {
+  const res = await fetch(`${FUNCTIONS_URL}/occurrences?anonKey=${encodeURIComponent(anonKey)}`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ occurrenceId, deleteManual: true }),
+  });
+  await parseOrThrow<{ ok: boolean }>(res);
+}
+
 export async function setOccurrenceCompleted(
   anonKey: string,
   occurrenceId: string,
   completed: boolean,
+  completedDate?: string,
 ): Promise<Occurrence> {
   const res = await fetch(`${FUNCTIONS_URL}/occurrences?anonKey=${encodeURIComponent(anonKey)}`, {
     method: 'POST',
     headers,
-    body: JSON.stringify({ occurrenceId, completed }),
+    body: JSON.stringify({ occurrenceId, completed, completedDate }),
   });
   const { occurrence } = await parseOrThrow<{ occurrence: Occurrence }>(res);
   return occurrence;

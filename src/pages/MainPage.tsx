@@ -118,7 +118,7 @@ export function MainPage() {
                           <ListRow.Texts
                             type="1RowTypeA"
                             top={o.chores.name}
-                            topProps={{ color: isDone ? adaptive.grey400 : adaptive.grey700, typography: 't6' }}
+                            topProps={{ color: isDone ? adaptive.grey400 : adaptive.grey700, typography: 'st10' }}
                           />
                         }
                         verticalPadding="small"
@@ -148,7 +148,7 @@ export function MainPage() {
                       <ListRow.Texts
                         type="1RowTypeA"
                         top={o.chores.name}
-                        topProps={{ color: adaptive.grey700, typography: 't6' }}
+                        topProps={{ color: adaptive.grey700, typography: 'st10' }}
                       />
                     }
                     verticalPadding="small"

@@ -223,7 +223,46 @@ export default {
         if (doneError) return Response.json({ error: doneError.message }, { status: 500 });
         if (pendingError) return Response.json({ error: pendingError.message }, { status: 500 });
 
-        const combined = [...(doneData ?? []), ...(pendingData ?? [])];
+        // 다음 예정일 표시: chore별 "가장 최근 완료건"에만, 이미 생성돼 있는 다음 occurrence(미완료)의
+        // 예정일을 새로 계산하지 않고 그대로 붙여서 보여준다.
+        const doneList = (doneData ?? []) as Array<{ id: string; chore_id: string; completed_date: string }>;
+        const choreIds = [...new Set(doneList.map((o) => o.chore_id))];
+
+        const latestDoneIdByChore = new Map<string, string>();
+        const nextScheduledByChore = new Map<string, string>();
+
+        if (choreIds.length > 0) {
+          const [{ data: allDoneForChores }, { data: allPendingForChores }] = await Promise.all([
+            ctx.supabaseAdmin
+              .from("chore_occurrences")
+              .select("id, chore_id, completed_date")
+              .in("chore_id", choreIds)
+              .eq("status", "done")
+              .order("completed_date", { ascending: false }),
+            ctx.supabaseAdmin
+              .from("chore_occurrences")
+              .select("chore_id, scheduled_date")
+              .in("chore_id", choreIds)
+              .eq("status", "pending")
+              .order("scheduled_date", { ascending: true }),
+          ]);
+
+          for (const row of (allDoneForChores ?? []) as Array<{ id: string; chore_id: string }>) {
+            if (!latestDoneIdByChore.has(row.chore_id)) latestDoneIdByChore.set(row.chore_id, row.id);
+          }
+          for (const row of (allPendingForChores ?? []) as Array<{ chore_id: string; scheduled_date: string }>) {
+            if (!nextScheduledByChore.has(row.chore_id)) nextScheduledByChore.set(row.chore_id, row.scheduled_date);
+          }
+        }
+
+        const combined = [
+          ...doneList.map((o) => ({
+            ...o,
+            next_scheduled_date:
+              latestDoneIdByChore.get(o.chore_id) === o.id ? nextScheduledByChore.get(o.chore_id) ?? null : null,
+          })),
+          ...(pendingData ?? []),
+        ];
         return Response.json({ occurrences: combined });
       }
 
@@ -267,12 +306,62 @@ export default {
 
     if (req.method === "POST") {
       const body = await req.json();
-      const { occurrenceId, completed, choreId, date } = body as {
+      const { occurrenceId, completed, completedDate, choreId, date, deleteManual } = body as {
         occurrenceId?: string;
         completed?: boolean;
+        completedDate?: string;
         choreId?: string;
         date?: string;
+        deleteManual?: boolean;
       };
+
+      // 수기 입력 삭제: 완전 삭제 + 파생된 다음 예정(미완료)도 함께 삭제 후, 남은 가장 최근 완료건
+      // 기준으로 다음 예정을 다시 생성해 "수기 입력이 없었던 것처럼" 복원한다.
+      if (deleteManual === true) {
+        if (typeof occurrenceId !== "string") {
+          return Response.json({ error: "occurrenceId가 필요해요." }, { status: 400 });
+        }
+
+        const { data: occurrence, error: occError } = await ctx.supabaseAdmin
+          .from("chore_occurrences")
+          .select("*, chores!inner(id, user_id)")
+          .eq("id", occurrenceId)
+          .single();
+
+        if (occError || !occurrence || occurrence.chores.user_id !== userId) {
+          return Response.json({ error: "해당 항목을 찾을 수 없어요." }, { status: 404 });
+        }
+
+        if (occurrence.completion_type !== "manual") {
+          return Response.json({ error: "수기 입력 항목만 삭제할 수 있어요." }, { status: 400 });
+        }
+
+        const targetChoreId = occurrence.chores.id as string;
+
+        await ctx.supabaseAdmin
+          .from("chore_occurrences")
+          .delete()
+          .eq("chore_id", targetChoreId)
+          .eq("status", "pending")
+          .gt("scheduled_date", occurrence.scheduled_date);
+
+        await ctx.supabaseAdmin.from("chore_occurrences").delete().eq("id", occurrenceId);
+
+        const { data: chore, error: choreError } = await ctx.supabaseAdmin
+          .from("chores")
+          .select("*")
+          .eq("id", targetChoreId)
+          .single();
+
+        if (choreError || !chore) return Response.json({ error: "해당 집안일을 찾을 수 없어요." }, { status: 404 });
+
+        const today = toDateOnly(new Date());
+        if (chore.is_active) {
+          await ensureOccurrencesUpTo(ctx.supabaseAdmin, chore as Chore, addDays(today, 35), today);
+        }
+
+        return Response.json({ ok: true });
+      }
 
       // 수기 입력: 특정 날짜에 "예정에 없이" 완료한 집안일을 새 occurrence로 기록한다.
       // (캘린더에서 날짜를 선택하고 "이날 한 집안일 추가"로 진입하는 경로)
@@ -335,8 +424,26 @@ export default {
       }
 
       const shouldComplete = completed !== false;
+      const today = toDateOnly(new Date());
+
+      if (shouldComplete && completedDate !== undefined) {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(completedDate)) {
+          return Response.json({ error: "completedDate 형식이 올바르지 않아요 (YYYY-MM-DD)." }, { status: 400 });
+        }
+        if (completedDate > today) {
+          return Response.json({ error: "미래 날짜는 완료일로 지정할 수 없어요." }, { status: 400 });
+        }
+      }
+
+      // completion_type은 최초 완료 시점에 정해지는 값이라 재토글로 바뀌면 안 된다.
+      // 이미 manual로 기록된 항목(체크 해제 후 재체크 등)은 그 값을 유지하고,
+      // 처음 완료 처리되는 항목만 regular로 채운다.
       const patch = shouldComplete
-        ? { status: "done", completed_date: toDateOnly(new Date()), completion_type: "regular" }
+        ? {
+            status: "done",
+            completed_date: completedDate ?? today,
+            completion_type: occurrence.completion_type ?? "regular",
+          }
         : { status: "pending", completed_date: null, completion_type: null };
 
       const { data, error } = await ctx.supabaseAdmin

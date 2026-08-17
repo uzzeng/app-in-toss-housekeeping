@@ -1,8 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
-import { BottomSheet, Button, Chip, ChipItem, Checkbox, IconButton } from '@toss/tds-mobile';
+import { BottomSheet, Button, Chip, ChipItem, Checkbox, IconButton, useDialog } from '@toss/tds-mobile';
 import { adaptive } from '@toss/tds-colors';
 import { useCurrentUser } from '../hooks/useAnonymousKey';
-import { addManualOccurrence, fetchMonthOccurrences, setOccurrenceCompleted, type Occurrence } from '../lib/occurrences';
+import {
+  addManualOccurrence,
+  deleteManualOccurrence,
+  fetchMonthOccurrences,
+  setOccurrenceCompleted,
+  type Occurrence,
+} from '../lib/occurrences';
 import { CHORE_TYPE_LABEL, fetchChores, type Chore } from '../lib/chores';
 
 const WEEKDAY = ['일', '월', '화', '수', '목', '금', '토'];
@@ -36,6 +42,11 @@ function dotColorHex(dot: DotColor): string {
   return adaptive.grey400;
 }
 
+function formatShortDate(dateKey: string): string {
+  const [, m, d] = dateKey.split('-');
+  return `${Number(m)}.${Number(d)}`;
+}
+
 function formatSelectedDateLabel(dateKey: string): string {
   const d = new Date(`${dateKey}T00:00:00`);
   return `${d.getMonth() + 1}월 ${d.getDate()}일 ${WEEKDAY[d.getDay()]}요일`;
@@ -67,6 +78,7 @@ function buildMonthGrid(year: number, month0to11: number): (number | null)[][] {
 
 export function CalendarPage() {
   const currentUser = useCurrentUser();
+  const { openAsyncConfirm } = useDialog();
   const [cursor, setCursor] = useState(() => {
     const now = new Date();
     return { year: now.getFullYear(), month: now.getMonth() }; // month: 0-11
@@ -80,6 +92,9 @@ export function CalendarPage() {
   const [addingChoreId, setAddingChoreId] = useState<string | null>(null);
   const [pickedChoreId, setPickedChoreId] = useState<string | null>(null);
   const [chorePickerOpen, setChorePickerOpen] = useState(false);
+  // "다른 날 완료" 날짜 피커: 대상 occurrence와 피커 자체의 월 커서(현재 캘린더 월과 독립)
+  const [backdatingOccurrence, setBackdatingOccurrence] = useState<Occurrence | null>(null);
+  const [pickerCursor, setPickerCursor] = useState({ year: 0, month: 0 });
   const isFirstLoad = useRef(true);
 
   const anonKey = currentUser.status === 'success' ? currentUser.user.anonKey : null;
@@ -131,10 +146,13 @@ export function CalendarPage() {
     if (!anonKey || !selectedDate || !pickedChoreId) return;
     setAddingChoreId(pickedChoreId);
     try {
-      const created = await addManualOccurrence(anonKey, pickedChoreId, selectedDate);
-      setOccurrences((prev) => [...prev, created]);
+      await addManualOccurrence(anonKey, pickedChoreId, selectedDate);
       setChorePickerOpen(false);
       setPickedChoreId(null);
+      // 수기 입력은 서버에서 이후 예정(pending)을 삭제하고 새 기준일로 재계산하므로
+      // 단순 append가 아니라 현재 월을 다시 조회해야 다음 예정 변경이 즉시 반영된다.
+      const refreshed = await fetchMonthOccurrences(anonKey, toMonthParam(cursor.year, cursor.month));
+      setOccurrences(refreshed);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : String(error));
     } finally {
@@ -157,11 +175,63 @@ export function CalendarPage() {
     );
     try {
       await setOccurrenceCompleted(anonKey, o.id, nextCompleted);
+      // 완료 여부가 바뀌면 "가장 최근 완료건" 기준의 다음 예정일 표시 대상도 함께 바뀌므로
+      // 현재 월을 다시 조회해 정합성을 맞춘다.
+      const refreshed = await fetchMonthOccurrences(anonKey, toMonthParam(cursor.year, cursor.month));
+      setOccurrences(refreshed);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : String(error));
       setOccurrences((prev) =>
         prev.map((item) => (item.id === o.id ? { ...item, status: o.status, completed_date: o.completed_date } : item)),
       );
+    }
+  }
+
+  function openBackdatePicker(o: Occurrence) {
+    const base = o.scheduled_date < today ? o.scheduled_date : today;
+    const [y, m] = base.split('-').map(Number);
+    setPickerCursor({ year: y, month: m - 1 });
+    setBackdatingOccurrence(o);
+  }
+
+  async function handleBackdate(dateKey: string) {
+    if (!anonKey || !backdatingOccurrence) return;
+    const o = backdatingOccurrence;
+    setBackdatingOccurrence(null);
+    setOccurrences((prev) =>
+      prev.map((item) => (item.id === o.id ? { ...item, status: 'done', completed_date: dateKey } : item)),
+    );
+    try {
+      await setOccurrenceCompleted(anonKey, o.id, true, dateKey);
+      const refreshed = await fetchMonthOccurrences(anonKey, toMonthParam(cursor.year, cursor.month));
+      setOccurrences(refreshed);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : String(error));
+      setOccurrences((prev) =>
+        prev.map((item) => (item.id === o.id ? { ...item, status: o.status, completed_date: o.completed_date } : item)),
+      );
+    }
+  }
+
+  async function handleDeleteManual(o: Occurrence) {
+    if (!anonKey) return;
+    const confirmed = await openAsyncConfirm({
+      title: '수기 입력을 삭제할까요?',
+      description: '삭제하면 되돌릴 수 없어요.',
+      confirmButton: '삭제하기',
+      cancelButton: '취소',
+      onConfirmClick: async () => {
+        await deleteManualOccurrence(anonKey, o.id);
+      },
+    });
+    if (!confirmed) return;
+    // 삭제 시 파생된 다음 예정(미완료) occurrence도 서버에서 함께 삭제/재생성되므로
+    // 단순 필터가 아니라 현재 월을 다시 조회해 정합성을 맞춘다.
+    try {
+      const refreshed = await fetchMonthOccurrences(anonKey, toMonthParam(cursor.year, cursor.month));
+      setOccurrences(refreshed);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : String(error));
     }
   }
 
@@ -282,6 +352,7 @@ export function CalendarPage() {
           </div>
           {(byDate.get(selectedDate) ?? []).map((o) => {
             const isDone = o.status === 'done';
+            const isManual = o.completion_type === 'manual';
             return (
               <div
                 key={o.id}
@@ -295,9 +366,57 @@ export function CalendarPage() {
                 <div style={{ width: 3, borderRadius: 2, background: itemBarColor(o, today) }} />
                 <div style={{ flex: 1 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                    <Checkbox.Circle checked={isDone} onCheckedChange={() => handleToggle(o)} size={20} />
+                    <Checkbox.Circle
+                      checked={isDone}
+                      disabled={isManual}
+                      onCheckedChange={() => {
+                        if (isManual) return;
+                        handleToggle(o);
+                      }}
+                      size={20}
+                    />
                     <span style={{ fontWeight: 'bold' }}>{o.chores.name}</span>
+                    {!isDone && (
+                      <button
+                        type="button"
+                        onClick={() => openBackdatePicker(o)}
+                        style={{
+                          marginLeft: 'auto',
+                          background: 'none',
+                          border: 'none',
+                          padding: 0,
+                          fontSize: 12,
+                          color: adaptive.grey500,
+                          textDecoration: 'underline',
+                        }}
+                      >
+                        다른 날 완료
+                      </button>
+                    )}
+                    {isManual && (
+                      <button
+                        type="button"
+                        aria-label="수기 입력 삭제"
+                        onClick={() => handleDeleteManual(o)}
+                        style={{
+                          marginLeft: 'auto',
+                          background: 'none',
+                          border: 'none',
+                          padding: 0,
+                          fontSize: 16,
+                          lineHeight: 1,
+                          color: adaptive.grey400,
+                        }}
+                      >
+                        ✕
+                      </button>
+                    )}
                   </div>
+                  {o.next_scheduled_date && (
+                    <p style={{ margin: '0 0 6px', paddingLeft: 28, fontSize: 12, color: adaptive.grey500 }}>
+                      다음 예정일 {formatShortDate(o.next_scheduled_date)}
+                    </p>
+                  )}
                   <Chip kind="action" size="small" variant="fill">
                     <ChipItem>
                       {isDone
@@ -363,6 +482,96 @@ export function CalendarPage() {
               options={activeChores.map((c) => ({ name: c.name, value: c.id, hideUnCheckedCheckBox: true }))}
               onChange={(e) => setPickedChoreId(e.target.value)}
             />
+          </BottomSheet>
+
+          <BottomSheet
+            open={backdatingOccurrence !== null}
+            onClose={() => setBackdatingOccurrence(null)}
+            header={<BottomSheet.Header>{backdatingOccurrence?.chores.name} · 실제로 한 날짜 선택</BottomSheet.Header>}
+          >
+            <div style={{ paddingLeft: 24, paddingBottom: 24 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, paddingRight: 24 }}>
+                <p style={{ margin: 0, fontSize: 15, fontWeight: 'bold', color: adaptive.grey900 }}>
+                  {pickerCursor.year}년 {pickerCursor.month + 1}월
+                </p>
+                <div style={{ display: 'flex', alignItems: 'center' }}>
+                  <IconButton
+                    aria-label="이전 달"
+                    variant="clear"
+                    name="icon-arrow-left-mono"
+                    iconSize={20}
+                    onClick={() =>
+                      setPickerCursor((c) =>
+                        c.month === 0 ? { year: c.year - 1, month: 11 } : { year: c.year, month: c.month - 1 },
+                      )
+                    }
+                  />
+                  <IconButton
+                    aria-label="다음 달"
+                    variant="clear"
+                    name="icon-arrow-right-mono"
+                    iconSize={20}
+                    disabled={pickerCursor.year === Number(today.slice(0, 4)) && pickerCursor.month === Number(today.slice(5, 7)) - 1}
+                    onClick={() =>
+                      setPickerCursor((c) =>
+                        c.month === 11 ? { year: c.year + 1, month: 0 } : { year: c.year, month: c.month + 1 },
+                      )
+                    }
+                  />
+                </div>
+              </div>
+              <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+                <thead>
+                  <tr>
+                    {WEEKDAY.map((w) => (
+                      <th
+                        key={w}
+                        style={{ fontSize: 12, color: '#888', fontWeight: 'normal', padding: 0, textAlign: 'center' }}
+                      >
+                        {w}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {buildMonthGrid(pickerCursor.year, pickerCursor.month).map((week, wi) => (
+                    <tr key={wi}>
+                      {week.map((day, di) => {
+                        if (day === null) return <td key={di} style={{ height: 44 }} />;
+                        const dateKey = `${pickerCursor.year}-${String(pickerCursor.month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                        const isFuture = dateKey > today;
+                        return (
+                          <td
+                            key={di}
+                            onClick={() => !isFuture && handleBackdate(dateKey)}
+                            style={{
+                              height: 44,
+                              textAlign: 'center',
+                              cursor: isFuture ? 'default' : 'pointer',
+                              padding: 0,
+                            }}
+                          >
+                            <div
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                width: 32,
+                                height: 32,
+                                borderRadius: 10,
+                                color: isFuture ? adaptive.grey300 : adaptive.grey900,
+                              }}
+                            >
+                              <span style={{ fontSize: 14 }}>{day}</span>
+                            </div>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </BottomSheet>
         </div>
       )}

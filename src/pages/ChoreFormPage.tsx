@@ -155,7 +155,7 @@ export function ChoreFormPage() {
   }
 
   return (
-    <div style={{ padding: '12px 12px 96px' }}>
+    <div style={{ padding: '12px 16px 96px' }}>
       <p style={{ margin: '0 0 12px', fontSize: 22, fontWeight: 'bold', color: adaptive.grey900 }}>
         {isEditing ? '집안일 수정' : '집안일 추가'}
       </p>
