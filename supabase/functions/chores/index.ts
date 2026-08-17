@@ -7,7 +7,7 @@ import { withSupabase } from "@supabase/server";
 
 const MAX_ACTIVE_CHORES = 19;
 
-type ChoreType = "general" | "annual_fixed" | "one_time";
+type ChoreType = "general" | "one_time";
 type RepeatMode = "fixed_date" | "interval";
 
 interface ChoreInput {
@@ -31,8 +31,8 @@ function validateChoreInput(input: unknown): { ok: true; value: ChoreInput } | {
   if (typeof body.name !== "string" || body.name.trim().length === 0) {
     return { ok: false, error: "name이 필요해요." };
   }
-  if (body.type !== "general" && body.type !== "annual_fixed" && body.type !== "one_time") {
-    return { ok: false, error: "type은 general/annual_fixed/one_time 중 하나여야 해요." };
+  if (body.type !== "general" && body.type !== "one_time") {
+    return { ok: false, error: "type은 general/one_time 중 하나여야 해요." };
   }
   if (typeof body.start_date !== "string") {
     return { ok: false, error: "start_date가 필요해요." };
@@ -60,12 +60,6 @@ function validateChoreInput(input: unknown): { ok: true; value: ChoreInput } | {
       if (typeof body.fixed_day !== "number") {
         return { ok: false, error: "fixed_date 방식은 fixed_day가 필요해요." };
       }
-    }
-  }
-
-  if (body.type === "annual_fixed") {
-    if (typeof body.fixed_month !== "number" || typeof body.fixed_day !== "number") {
-      return { ok: false, error: "annual_fixed 유형은 fixed_month, fixed_day가 필요해요." };
     }
   }
 

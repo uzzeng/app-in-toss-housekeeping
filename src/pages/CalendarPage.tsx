@@ -106,9 +106,6 @@ export function CalendarPage() {
       .catch((error: unknown) => setErrorMessage(error instanceof Error ? error.message : String(error)));
   }, [anonKey]);
 
-  if (currentUser.status === 'loading') {
-    return <p style={{ padding: 16 }}>사용자 식별 중...</p>;
-  }
   if (currentUser.status === 'error') {
     return (
       <div style={{ padding: 16 }}>

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import { User } from '@apps-in-toss/web-framework';
 
 export interface CurrentUser {
@@ -10,7 +10,7 @@ export interface CurrentUser {
   reminder_days: number;
 }
 
-type CurrentUserState =
+export type CurrentUserState =
   | { status: 'loading' }
   | { status: 'success'; user: CurrentUser }
   | {
@@ -41,8 +41,11 @@ async function verifyUser(anonKey: string): Promise<CurrentUser> {
   return { ...user, anonKey } as CurrentUser;
 }
 
-// 앱 진입 시 익명 식별키를 발급받고, 서버에서 검증/매핑해 현재 사용자 정보를 반환한다.
-export function useCurrentUser(): CurrentUserState {
+const CurrentUserContext = createContext<CurrentUserState | null>(null);
+
+// 앱 진입 시 익명 식별키를 발급받고, 서버에서 검증/매핑해 현재 사용자 정보를 앱 전체에 공유한다.
+// 페이지 이동마다 재검증하지 않도록 App 최상단에서 한 번만 실행한다.
+export function CurrentUserProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<CurrentUserState>({ status: 'loading' });
 
   useEffect(() => {
@@ -65,5 +68,13 @@ export function useCurrentUser(): CurrentUserState {
     };
   }, []);
 
+  return <CurrentUserContext.Provider value={state}>{children}</CurrentUserContext.Provider>;
+}
+
+export function useCurrentUser(): CurrentUserState {
+  const state = useContext(CurrentUserContext);
+  if (!state) {
+    throw new Error('useCurrentUser는 CurrentUserProvider 내부에서만 사용할 수 있어요.');
+  }
   return state;
 }

@@ -9,7 +9,7 @@ interface Chore {
   id: string;
   user_id: string;
   name: string;
-  type: "general" | "annual_fixed" | "one_time";
+  type: "general" | "one_time";
   repeat_mode: "fixed_date" | "interval" | null;
   interval_value: number | null;
   interval_unit: "day" | "week" | null;
@@ -44,7 +44,7 @@ function lastDayOfMonth(year: number, month1to12: number): number {
   return new Date(Date.UTC(year, month1to12, 0)).getUTCDate();
 }
 
-// annual_fixed, 그리고 general/fixed_date 공용: 기준일 이후(포함) 가장 빠른 "매달/매년 지정일"을 계산
+// general/fixed_date 전용: 기준일 이후(포함) 가장 빠른 "매달/매년 지정일"을 계산
 function nextFixedDate(
   from: string,
   unit: "month" | "year",
@@ -91,11 +91,6 @@ function nextFixedDate(
 function computeNextScheduledDate(chore: Chore, lastOccurrenceDate: string | null): string | null {
   if (chore.type === "one_time") {
     return lastOccurrenceDate ? null : chore.start_date;
-  }
-
-  if (chore.type === "annual_fixed") {
-    const base = lastOccurrenceDate ? addDays(lastOccurrenceDate, 1) : chore.start_date;
-    return nextFixedDate(base, "year", chore.fixed_month, chore.fixed_day ?? 1);
   }
 
   // general

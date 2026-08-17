@@ -55,9 +55,6 @@ export function MainPage() {
     }
   }
 
-  if (currentUser.status === 'loading') {
-    return <p style={{ padding: 16 }}>사용자 식별 중...</p>;
-  }
   if (currentUser.status === 'error') {
     return (
       <div style={{ padding: 16 }}>
@@ -80,13 +77,15 @@ export function MainPage() {
           <p style={{ margin: 0, fontSize: 22, fontWeight: 'bold', color: adaptive.grey900 }}>Housekeeping!</p>
 
           <div style={{ display: 'flex', justifyContent: 'center', padding: '8px 0 20px' }}>
-            <Asset.Image
-              frameShape={{ width: 160 }}
-              backgroundColor="transparent"
-              src={remaining === 0 ? '/character-happy.png' : '/character-sad.png'}
-              aria-hidden={true}
-              style={{ aspectRatio: '1/1' }}
-            />
+            <div key={remaining === 0 ? 'happy' : 'sad'} className="character-roll-in">
+              <Asset.Image
+                frameShape={{ width: 160 }}
+                backgroundColor="transparent"
+                src={remaining === 0 ? '/character-happy.png' : '/character-sad.png'}
+                aria-hidden={true}
+                style={{ aspectRatio: '1/1' }}
+              />
+            </div>
           </div>
 
           {/* 오늘 할 일 */}
@@ -119,7 +118,7 @@ export function MainPage() {
                           <ListRow.Texts
                             type="1RowTypeA"
                             top={o.chores.name}
-                            topProps={{ color: isDone ? adaptive.grey400 : adaptive.grey700 }}
+                            topProps={{ color: isDone ? adaptive.grey400 : adaptive.grey700, typography: 't6' }}
                           />
                         }
                         verticalPadding="small"
@@ -146,7 +145,11 @@ export function MainPage() {
                     key={o.id}
                     left={<ListRow.LeftText>{formatDateLabel(o.scheduled_date)}</ListRow.LeftText>}
                     contents={
-                      <ListRow.Texts type="1RowTypeA" top={o.chores.name} topProps={{ color: adaptive.grey700 }} />
+                      <ListRow.Texts
+                        type="1RowTypeA"
+                        top={o.chores.name}
+                        topProps={{ color: adaptive.grey700, typography: 't6' }}
+                      />
                     }
                     verticalPadding="small"
                     horizontalPadding="small"
