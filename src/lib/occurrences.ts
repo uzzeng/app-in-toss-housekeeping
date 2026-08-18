@@ -51,6 +51,21 @@ export async function fetchWeekOccurrences(anonKey: string): Promise<Occurrence[
   return occurrences;
 }
 
+export interface ChoreHistoryItem {
+  id: string;
+  completed_date: string;
+  completion_type: 'regular' | 'manual';
+}
+
+export async function fetchChoreHistory(anonKey: string, choreId: string): Promise<ChoreHistoryItem[]> {
+  const res = await fetch(
+    `${FUNCTIONS_URL}/occurrences?anonKey=${encodeURIComponent(anonKey)}&range=history&choreId=${encodeURIComponent(choreId)}`,
+    { headers },
+  );
+  const { occurrences } = await parseOrThrow<{ occurrences: ChoreHistoryItem[] }>(res);
+  return occurrences;
+}
+
 export async function fetchMonthOccurrences(anonKey: string, month: string): Promise<Occurrence[]> {
   const res = await fetch(
     `${FUNCTIONS_URL}/occurrences?anonKey=${encodeURIComponent(anonKey)}&range=month&month=${month}`,

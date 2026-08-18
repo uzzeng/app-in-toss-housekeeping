@@ -30,6 +30,13 @@ function addDays(dateStr: string, days: number): string {
   return toDateOnly(d);
 }
 
+// "오늘" 날짜는 KST 자정 기준이어야 한다 — UTC 기준으로 계산하면 KST 00:00~08:59 사이에
+// 실제 날짜보다 하루 이른 값이 나와 occurrence 생성/완료 판단이 어긋난다.
+function todayKst(): string {
+  const kst = new Date(Date.now() + 9 * 60 * 60 * 1000);
+  return toDateOnly(kst);
+}
+
 // "YYYY-MM" 형태의 month 파라미터가 유효한지 확인하고 [월초, 월말] 날짜를 반환
 function monthRange(monthParam: string | null): { start: string; end: string } | null {
   if (!monthParam || !/^\d{4}-\d{2}$/.test(monthParam)) return null;
@@ -177,7 +184,36 @@ export default {
 
     if (req.method === "GET") {
       const rangeParam = url.searchParams.get("range");
-      const today = toDateOnly(new Date());
+      const today = todayKst();
+
+      if (rangeParam === "history") {
+        const choreId = url.searchParams.get("choreId");
+        if (!choreId) {
+          return Response.json({ error: "choreId 쿼리 파라미터가 필요해요." }, { status: 400 });
+        }
+
+        const { data: chore, error: choreError } = await ctx.supabaseAdmin
+          .from("chores")
+          .select("id")
+          .eq("id", choreId)
+          .eq("user_id", userId)
+          .single();
+
+        if (choreError || !chore) {
+          return Response.json({ error: "해당 집안일을 찾을 수 없어요." }, { status: 404 });
+        }
+
+        // 완료 이력 전체를 최신순으로 반환 — 3개월 평균/간격 계산은 프론트에서 처리
+        const { data, error } = await ctx.supabaseAdmin
+          .from("chore_occurrences")
+          .select("id, completed_date, completion_type")
+          .eq("chore_id", choreId)
+          .eq("status", "done")
+          .order("completed_date", { ascending: false });
+
+        if (error) return Response.json({ error: error.message }, { status: 500 });
+        return Response.json({ occurrences: data });
+      }
 
       if (rangeParam === "month") {
         const monthWindow = monthRange(url.searchParams.get("month"));
@@ -355,7 +391,7 @@ export default {
 
         if (choreError || !chore) return Response.json({ error: "해당 집안일을 찾을 수 없어요." }, { status: 404 });
 
-        const today = toDateOnly(new Date());
+        const today = todayKst();
         if (chore.is_active) {
           await ensureOccurrencesUpTo(ctx.supabaseAdmin, chore as Chore, addDays(today, 35), today);
         }
@@ -402,7 +438,7 @@ export default {
           .gt("scheduled_date", date);
 
         // range=month 조회 시 캘린더에서 바로 다음 회차가 보이도록 넉넉히(약 한 달) 재계산한다.
-        const today = toDateOnly(new Date());
+        const today = todayKst();
         await ensureOccurrencesUpTo(ctx.supabaseAdmin, chore as Chore, addDays(today, 35), today);
 
         return Response.json({ occurrence: data });
@@ -424,7 +460,12 @@ export default {
       }
 
       const shouldComplete = completed !== false;
-      const today = toDateOnly(new Date());
+      const today = todayKst();
+
+      // 수기 입력은 완전 삭제만 가능하고 체크 해제로 미완료로 되돌릴 수 없다 (PRD 규칙).
+      if (!shouldComplete && occurrence.completion_type === "manual") {
+        return Response.json({ error: "수기 입력은 완료 취소할 수 없어요. 삭제해 주세요." }, { status: 400 });
+      }
 
       if (shouldComplete && completedDate !== undefined) {
         if (!/^\d{4}-\d{2}-\d{2}$/.test(completedDate)) {

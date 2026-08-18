@@ -56,7 +56,9 @@ export default {
     const { data, error } = await ctx.supabaseAdmin
       .from("users")
       .upsert({ anon_key: anonKey }, { onConflict: "anon_key" })
-      .select("id, notification_time, reminder_time, reminder_time_enabled, reminder_days")
+      .select(
+        "id, notification_time, notification_time_enabled, reminder_time, reminder_time_enabled, reminder_days",
+      )
       .single();
 
     if (error) {

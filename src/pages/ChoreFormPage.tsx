@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { BottomSheet, CTAButton, FixedBottomCTA, Post, SegmentedControl, TextField } from '@toss/tds-mobile';
+import { BottomSheet, CTAButton, FixedBottomCTA, IconButton, Post, SegmentedControl, TextField } from '@toss/tds-mobile';
 import { adaptive } from '@toss/tds-colors';
 import { useCurrentUser } from '../hooks/useAnonymousKey';
 import {
@@ -156,9 +156,18 @@ export function ChoreFormPage() {
 
   return (
     <div style={{ padding: '12px 16px 96px' }}>
-      <p style={{ margin: '0 0 12px', fontSize: 22, fontWeight: 'bold', color: adaptive.grey900 }}>
-        {isEditing ? '집안일 수정' : '집안일 추가'}
-      </p>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 12 }}>
+        <IconButton
+          aria-label="뒤로"
+          variant="clear"
+          name="icon-arrow-left-mono"
+          iconSize={24}
+          onClick={() => navigate(-1)}
+        />
+        <p style={{ margin: 0, fontSize: 22, fontWeight: 'bold', color: adaptive.grey900 }}>
+          {isEditing ? '집안일 수정' : '집안일 추가'}
+        </p>
+      </div>
 
       {errorMessage && (
         <p style={{ color: adaptive.red500, fontSize: 13, marginBottom: 12 }}>{errorMessage}</p>

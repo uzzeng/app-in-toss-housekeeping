@@ -16,10 +16,11 @@
 |---|---|---|---|---|
 | `id` | `uuid` | PK | `gen_random_uuid()` | 사용자 식별자 |
 | `anon_key` | `text` | UNIQUE, NOT NULL | — | 앱인토스 SDK `getAnonymousKey()`로 받은 익명 식별키(hash) |
-| `notification_time` | `time` | NOT NULL | `'08:00'` | 알림 시간 (매일 필수 발송 시각) |
+| `notification_time` | `time` | NOT NULL | `'08:00'` | 알림 시간 |
+| `notification_time_enabled` | `boolean` | NOT NULL | `false` | 알림 시간 사용 여부 (2026-08-20 추가, 기본값 false로 재조정) |
 | `reminder_time` | `time` | NOT NULL | `'21:00'` | 리마인드 재알림 시간 |
 | `reminder_time_enabled` | `boolean` | NOT NULL | `false` | 리마인드 재알림 사용 여부 |
-| `reminder_days` | `integer` | NOT NULL | `2` | 재알림 일수 |
+| `reminder_days` | `integer` | NOT NULL | `0` | 재알림 일수 (2026-08-20 기본값 2 → 0으로 재조정) |
 | `created_at` | `timestamptz` | NOT NULL | `now()` | 생성 시각 |
 | `updated_at` | `timestamptz` | NOT NULL | `now()` | 수정 시각 |
 

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Button, Checkbox, List, ListRow } from '@toss/tds-mobile';
+import { Button, Checkbox, List, ListRow, useDialog } from '@toss/tds-mobile';
 import { adaptive } from '@toss/tds-colors';
 import { useCurrentUser } from '../hooks/useAnonymousKey';
 import { CHORE_TYPE_LABEL, deleteChore, fetchChores, updateChore, type Chore } from '../lib/chores';
@@ -19,6 +19,7 @@ function describeChore(chore: Chore): string {
 export function ChoreListPage() {
   const currentUser = useCurrentUser();
   const navigate = useNavigate();
+  const { openAsyncConfirm } = useDialog();
   const [chores, setChores] = useState<Chore[]>([]);
   const [loadingChores, setLoadingChores] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -46,12 +47,17 @@ export function ChoreListPage() {
 
   async function handleDelete(chore: Chore) {
     if (!anonKey) return;
-    try {
-      await deleteChore(anonKey, chore.id);
-      setChores((prev) => prev.filter((c) => c.id !== chore.id));
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : String(error));
-    }
+    const confirmed = await openAsyncConfirm({
+      title: '집안일을 삭제할까요?',
+      description: '삭제하면 되돌릴 수 없어요.',
+      confirmButton: '삭제하기',
+      cancelButton: '취소',
+      onConfirmClick: async () => {
+        await deleteChore(anonKey, chore.id);
+      },
+    });
+    if (!confirmed) return;
+    setChores((prev) => prev.filter((c) => c.id !== chore.id));
   }
 
   if (currentUser.status === 'error') {
@@ -88,12 +94,15 @@ export function ChoreListPage() {
           {chores.map((chore) => (
             <ListRow
               key={chore.id}
+              onClick={() => navigate(`/chores/${chore.id}/history`)}
               left={
-                <Checkbox.Circle
-                  size={24}
-                  checked={chore.is_active}
-                  onCheckedChange={() => handleToggleActive(chore)}
-                />
+                <div onClick={(e) => e.stopPropagation()}>
+                  <Checkbox.Circle
+                    size={24}
+                    checked={chore.is_active}
+                    onCheckedChange={() => handleToggleActive(chore)}
+                  />
+                </div>
               }
               contents={
                 <ListRow.Texts
@@ -105,7 +114,7 @@ export function ChoreListPage() {
                 />
               }
               right={
-                <div style={{ display: 'flex', gap: 6 }}>
+                <div style={{ display: 'flex', gap: 6 }} onClick={(e) => e.stopPropagation()}>
                   <Button size="small" variant="weak" onClick={() => navigate(`/chores/${chore.id}/edit`)}>
                     수정
                   </Button>

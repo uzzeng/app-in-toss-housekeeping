@@ -5,7 +5,9 @@ import { CurrentUserProvider, useCurrentUser } from './hooks/useAnonymousKey';
 import { MainPage } from './pages/MainPage';
 import { ChoreListPage } from './pages/ChoreListPage';
 import { ChoreFormPage } from './pages/ChoreFormPage';
+import { ChoreHistoryPage } from './pages/ChoreHistoryPage';
 import { CalendarPage } from './pages/CalendarPage';
+import { SettingsPage } from './pages/SettingsPage';
 
 function AppRoutes() {
   const currentUser = useCurrentUser();
@@ -23,6 +25,8 @@ function AppRoutes() {
       </Route>
       <Route path="/chores/new" element={<ChoreFormPage />} />
       <Route path="/chores/:id/edit" element={<ChoreFormPage />} />
+      <Route path="/chores/:id/history" element={<ChoreHistoryPage />} />
+      <Route path="/settings" element={<SettingsPage />} />
     </Routes>
   );
 }

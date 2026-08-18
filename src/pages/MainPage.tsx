@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Asset, List, ListRow, Post } from '@toss/tds-mobile';
+import { useNavigate } from 'react-router-dom';
+import { Asset, IconButton, List, ListRow, Post, useDialog } from '@toss/tds-mobile';
 import { adaptive } from '@toss/tds-colors';
 import { useCurrentUser } from '../hooks/useAnonymousKey';
 import {
@@ -16,6 +17,8 @@ function formatDateLabel(dateStr: string): string {
 
 export function MainPage() {
   const currentUser = useCurrentUser();
+  const navigate = useNavigate();
+  const { openAlert } = useDialog();
   const [today, setToday] = useState<Occurrence[]>([]);
   const [week, setWeek] = useState<Occurrence[]>([]);
   const [loading, setLoading] = useState(true);
@@ -37,6 +40,14 @@ export function MainPage() {
 
   function applyStatus(list: Occurrence[], id: string, status: Occurrence['status']): Occurrence[] {
     return list.map((o) => (o.id === id ? { ...o, status } : o));
+  }
+
+  function handleManualClick() {
+    openAlert({
+      title: '이 기록은 수정할 수 없어요',
+      description: '수기 입력한 항목은 캘린더에서 삭제해 주세요.',
+      alertButton: '확인',
+    });
   }
 
   async function handleToggle(occurrence: Occurrence) {
@@ -74,7 +85,16 @@ export function MainPage() {
         <p>불러오는 중...</p>
       ) : (
         <>
-          <p style={{ margin: 0, fontSize: 22, fontWeight: 'bold', color: adaptive.grey900 }}>Housekeeping!</p>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <p style={{ margin: 0, fontSize: 22, fontWeight: 'bold', color: adaptive.grey900 }}>Housekeeping!</p>
+            <IconButton
+              aria-label="알림 설정"
+              variant="clear"
+              name="icon-alarm-mono"
+              iconSize={24}
+              onClick={() => navigate('/settings')}
+            />
+          </div>
 
           <div style={{ display: 'flex', justifyContent: 'center', padding: '8px 0 20px' }}>
             <div key={remaining === 0 ? 'happy' : 'sad'} className="character-roll-in">
@@ -102,10 +122,11 @@ export function MainPage() {
                 <List>
                   {today.map((o) => {
                     const isDone = o.status === 'done';
+                    const isManual = o.completion_type === 'manual';
                     return (
                       <ListRow
                         key={o.id}
-                        onClick={() => handleToggle(o)}
+                        onClick={isManual ? handleManualClick : () => handleToggle(o)}
                         left={
                           <ListRow.AssetIcon
                             size="xsmall"

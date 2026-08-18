@@ -164,7 +164,8 @@ export default {
       ];
       const scheduleChanged = Object.keys(body).some((key) => SCHEDULE_FIELDS.includes(key));
       if (scheduleChanged) {
-        const today = new Date().toISOString().slice(0, 10);
+        // KST 자정 기준 "오늘" — UTC 기준이면 KST 00:00~08:59 사이에 하루 어긋난다.
+        const today = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
         await ctx.supabaseAdmin
           .from("chore_occurrences")
           .delete()
