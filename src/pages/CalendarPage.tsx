@@ -237,7 +237,7 @@ export function CalendarPage() {
 
   return (
     <div style={{ padding: '12px 16px 16px' }}>
-      <p style={{ margin: '0 0 12px', fontSize: 22, fontWeight: 'bold', color: adaptive.grey900 }}>집안일 달력</p>
+      <p style={{ margin: '0 0 12px', fontSize: 22, fontWeight: 'bold', color: adaptive.grey900 }}>집안일 캘린더</p>
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
         <p style={{ margin: 0, fontSize: 15, fontWeight: 'bold', color: adaptive.grey900 }}>
