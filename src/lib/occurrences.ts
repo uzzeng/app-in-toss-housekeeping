@@ -33,12 +33,19 @@ async function parseOrThrow<T>(res: Response): Promise<T> {
   return res.json();
 }
 
+// 탭 이동 시 react-router가 MainPage를 매번 언마운트/재마운트하면서 같은 데이터를
+// 처음부터 다시 불러오는 게 체감 지연의 원인이었다. 마지막 응답을 모듈 스코프에 캐시해두고
+// 재진입 시 먼저 즉시 보여준 뒤 백그라운드로 새로고침하는 용도. 앱 종료 시 캐시도 사라짐.
+export const todayOccurrencesCache = new Map<string, Occurrence[]>();
+export const weekOccurrencesCache = new Map<string, Occurrence[]>();
+
 export async function fetchTodayOccurrences(anonKey: string): Promise<Occurrence[]> {
   const res = await fetch(
     `${FUNCTIONS_URL}/occurrences?anonKey=${encodeURIComponent(anonKey)}&range=today`,
     { headers },
   );
   const { occurrences } = await parseOrThrow<{ occurrences: Occurrence[] }>(res);
+  todayOccurrencesCache.set(anonKey, occurrences);
   return occurrences;
 }
 
@@ -48,6 +55,7 @@ export async function fetchWeekOccurrences(anonKey: string): Promise<Occurrence[
     { headers },
   );
   const { occurrences } = await parseOrThrow<{ occurrences: Occurrence[] }>(res);
+  weekOccurrencesCache.set(anonKey, occurrences);
   return occurrences;
 }
 
@@ -66,12 +74,16 @@ export async function fetchChoreHistory(anonKey: string, choreId: string): Promi
   return occurrences;
 }
 
+// 월 단위로 캐시 키를 나눈다 (anonKey:month) — 캘린더는 월 이동마다 다른 데이터를 보여줘야 하므로.
+export const monthOccurrencesCache = new Map<string, Occurrence[]>();
+
 export async function fetchMonthOccurrences(anonKey: string, month: string): Promise<Occurrence[]> {
   const res = await fetch(
     `${FUNCTIONS_URL}/occurrences?anonKey=${encodeURIComponent(anonKey)}&range=month&month=${month}`,
     { headers },
   );
   const { occurrences } = await parseOrThrow<{ occurrences: Occurrence[] }>(res);
+  monthOccurrencesCache.set(`${anonKey}:${month}`, occurrences);
   return occurrences;
 }
 

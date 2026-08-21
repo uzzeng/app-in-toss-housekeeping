@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Button, Checkbox, List, ListRow, useDialog } from '@toss/tds-mobile';
 import { adaptive } from '@toss/tds-colors';
 import { useCurrentUser } from '../hooks/useAnonymousKey';
-import { CHORE_TYPE_LABEL, deleteChore, fetchChores, updateChore, type Chore } from '../lib/chores';
+import { CHORE_TYPE_LABEL, choresCache, deleteChore, fetchChores, updateChore, type Chore } from '../lib/chores';
 
 function describeChore(chore: Chore): string {
   if (chore.type === 'one_time') return `${chore.start_date} (1회)`;
@@ -20,15 +20,14 @@ export function ChoreListPage() {
   const currentUser = useCurrentUser();
   const navigate = useNavigate();
   const { openAsyncConfirm } = useDialog();
-  const [chores, setChores] = useState<Chore[]>([]);
-  const [loadingChores, setLoadingChores] = useState(true);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
   const anonKey = currentUser.status === 'success' ? currentUser.user.anonKey : null;
+  const [chores, setChores] = useState<Chore[]>(() => (anonKey ? choresCache.get(anonKey) ?? [] : []));
+  const [loadingChores, setLoadingChores] = useState(() => !(anonKey && choresCache.has(anonKey)));
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (!anonKey) return;
-    setLoadingChores(true);
+    if (!choresCache.has(anonKey)) setLoadingChores(true);
     fetchChores(anonKey)
       .then(setChores)
       .catch((error: unknown) => setErrorMessage(error instanceof Error ? error.message : String(error)))
@@ -39,7 +38,11 @@ export function ChoreListPage() {
     if (!anonKey) return;
     try {
       const updated = await updateChore(anonKey, chore.id, { is_active: !chore.is_active });
-      setChores((prev) => prev.map((c) => (c.id === chore.id ? updated : c)));
+      setChores((prev) => {
+        const next = prev.map((c) => (c.id === chore.id ? updated : c));
+        choresCache.set(anonKey, next);
+        return next;
+      });
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : String(error));
     }
@@ -57,7 +60,11 @@ export function ChoreListPage() {
       },
     });
     if (!confirmed) return;
-    setChores((prev) => prev.filter((c) => c.id !== chore.id));
+    setChores((prev) => {
+      const next = prev.filter((c) => c.id !== chore.id);
+      choresCache.set(anonKey, next);
+      return next;
+    });
   }
 
   if (currentUser.status === 'error') {

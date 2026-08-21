@@ -6,10 +6,11 @@ import {
   addManualOccurrence,
   deleteManualOccurrence,
   fetchMonthOccurrences,
+  monthOccurrencesCache,
   setOccurrenceCompleted,
   type Occurrence,
 } from '../lib/occurrences';
-import { CHORE_TYPE_LABEL, fetchChores, type Chore } from '../lib/chores';
+import { CHORE_TYPE_LABEL, choresCache, fetchChores, type Chore } from '../lib/chores';
 
 const WEEKDAY = ['일', '월', '화', '수', '목', '금', '토'];
 
@@ -83,12 +84,16 @@ export function CalendarPage() {
     const now = new Date();
     return { year: now.getFullYear(), month: now.getMonth() }; // month: 0-11
   });
-  const [occurrences, setOccurrences] = useState<Occurrence[]>([]);
-  const [loading, setLoading] = useState(true);
+  const anonKey = currentUser.status === 'success' ? currentUser.user.anonKey : null;
+  const monthCacheKey = anonKey ? `${anonKey}:${toMonthParam(cursor.year, cursor.month)}` : null;
+  const [occurrences, setOccurrences] = useState<Occurrence[]>(() =>
+    monthCacheKey ? monthOccurrencesCache.get(monthCacheKey) ?? [] : [],
+  );
+  const [loading, setLoading] = useState(() => !(monthCacheKey && monthOccurrencesCache.has(monthCacheKey)));
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   // 캘린더 진입 시에는 오늘 날짜가 기본으로 선택되어 있어야 한다.
   const [selectedDate, setSelectedDate] = useState<string | null>(() => todayKey());
-  const [chores, setChores] = useState<Chore[]>([]);
+  const [chores, setChores] = useState<Chore[]>(() => (anonKey ? choresCache.get(anonKey) ?? [] : []));
   const [addingChoreId, setAddingChoreId] = useState<string | null>(null);
   const [pickedChoreId, setPickedChoreId] = useState<string | null>(null);
   const [chorePickerOpen, setChorePickerOpen] = useState(false);
@@ -97,11 +102,9 @@ export function CalendarPage() {
   const [pickerCursor, setPickerCursor] = useState({ year: 0, month: 0 });
   const isFirstLoad = useRef(true);
 
-  const anonKey = currentUser.status === 'success' ? currentUser.user.anonKey : null;
-
   useEffect(() => {
     if (!anonKey) return;
-    setLoading(true);
+    if (!(monthCacheKey && monthOccurrencesCache.has(monthCacheKey))) setLoading(true);
     // 최초 진입 시에는 오늘 날짜 선택을 유지하고, 이후 달 이동에서만 선택을 해제한다.
     if (isFirstLoad.current) {
       isFirstLoad.current = false;

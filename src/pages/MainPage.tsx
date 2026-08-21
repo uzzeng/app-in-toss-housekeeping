@@ -7,6 +7,8 @@ import {
   fetchTodayOccurrences,
   fetchWeekOccurrences,
   setOccurrenceCompleted,
+  todayOccurrencesCache,
+  weekOccurrencesCache,
   type Occurrence,
 } from '../lib/occurrences';
 
@@ -19,16 +21,16 @@ export function MainPage() {
   const currentUser = useCurrentUser();
   const navigate = useNavigate();
   const { openAlert } = useDialog();
-  const [today, setToday] = useState<Occurrence[]>([]);
-  const [week, setWeek] = useState<Occurrence[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
   const anonKey = currentUser.status === 'success' ? currentUser.user.anonKey : null;
+  const [today, setToday] = useState<Occurrence[]>(() => (anonKey ? todayOccurrencesCache.get(anonKey) ?? [] : []));
+  const [week, setWeek] = useState<Occurrence[]>(() => (anonKey ? weekOccurrencesCache.get(anonKey) ?? [] : []));
+  const [loading, setLoading] = useState(() => !(anonKey && todayOccurrencesCache.has(anonKey)));
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (!anonKey) return;
-    setLoading(true);
+    const hasCache = todayOccurrencesCache.has(anonKey);
+    if (!hasCache) setLoading(true);
     Promise.all([fetchTodayOccurrences(anonKey), fetchWeekOccurrences(anonKey)])
       .then(([todayList, weekList]) => {
         setToday(todayList);
@@ -56,13 +58,21 @@ export function MainPage() {
     const nextStatus: Occurrence['status'] = nextCompleted ? 'done' : 'pending';
 
     // 목록에서 제거/추가하지 않고, 같은 항목의 status만 낙관적으로 갱신
-    setToday((prev) => applyStatus(prev, occurrence.id, nextStatus));
+    setToday((prev) => {
+      const next = applyStatus(prev, occurrence.id, nextStatus);
+      todayOccurrencesCache.set(anonKey, next);
+      return next;
+    });
     try {
       await setOccurrenceCompleted(anonKey, occurrence.id, nextCompleted);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : String(error));
       // 실패 시 원복
-      setToday((prev) => applyStatus(prev, occurrence.id, occurrence.status));
+      setToday((prev) => {
+        const next = applyStatus(prev, occurrence.id, occurrence.status);
+        todayOccurrencesCache.set(anonKey, next);
+        return next;
+      });
     }
   }
 

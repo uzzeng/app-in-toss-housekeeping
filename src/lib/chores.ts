@@ -56,6 +56,11 @@ async function parseOrThrow<T>(res: Response): Promise<T> {
   return res.json();
 }
 
+// 탭 이동 시 페이지가 매번 언마운트/재마운트되며 같은 데이터를 처음부터 다시 불러오는 걸
+// 피하려고 마지막 응답을 모듈 스코프에 캐시해둔다. 재진입 시 먼저 즉시 보여준 뒤
+// 백그라운드로 새로고침하는 용도. 앱 종료 시 캐시도 사라짐.
+export const choresCache = new Map<string, Chore[]>();
+
 export async function fetchChores(anonKey: string): Promise<Chore[]> {
   // 집안일 리스트(관리) 화면에서는 비활성 항목도 계속 보여야 "다시 활성화" 조작이 가능하므로
   // includeInactive=true로 항상 전체 조회한다.
@@ -64,6 +69,7 @@ export async function fetchChores(anonKey: string): Promise<Chore[]> {
     { headers },
   );
   const { chores } = await parseOrThrow<{ chores: Chore[] }>(res);
+  choresCache.set(anonKey, chores);
   return chores;
 }
 

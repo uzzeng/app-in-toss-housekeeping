@@ -124,36 +124,59 @@ async function ensureOccurrencesUpTo(
   untilDate: string,
   today: string,
 ) {
+  await ensureOccurrencesUpToBatch(supabaseAdmin, [chore], untilDate, today);
+}
+
+// 여러 chore를 대상으로 "가장 최근 occurrence"를 한 번의 쿼리로 모아 가져오고,
+// 새로 생성해야 할 occurrence도 한 번의 insert로 모아서 처리한다. chore 개수만큼
+// 순차/병렬 DB 왕복이 발생하던 것을 쿼리 2회(조회 1 + insert 1)로 줄이기 위한 배치 버전.
+async function ensureOccurrencesUpToBatch(
+  supabaseAdmin: SupabaseAdminLike,
+  chores: Chore[],
+  untilDate: string,
+  today: string,
+) {
+  if (chores.length === 0) return;
+
+  const choreIds = chores.map((c) => c.id);
   const { data: existingList } = await supabaseAdmin
     .from("chore_occurrences")
-    .select("scheduled_date, status, completed_date")
-    .eq("chore_id", chore.id)
-    .order("scheduled_date", { ascending: false })
-    .limit(1);
+    .select("chore_id, scheduled_date, status, completed_date")
+    .in("chore_id", choreIds)
+    .order("scheduled_date", { ascending: false });
 
-  const latest = (existingList ?? [])[0] as
-    | { scheduled_date: string; status: string; completed_date: string | null }
-    | undefined;
-
-  // 가장 최근 occurrence가 아직 미완료이고, 그 예정일이 아직 지나지 않았다면(오늘 포함 미래)
-  // 이미 "해야 할 일"이 잡혀 있는 상태이므로 새로 만들 필요가 없다.
-  // 반면 예정일이 이미 지났다면(과거) — "완료 안 해도 다음 예정일은 스케줄대로 도래한다"는
-  // PRD 규칙에 따라 그 미완료 건은 그대로 둔 채 다음 회차를 별도로 생성해야 한다.
-  if (latest && latest.status === "pending" && latest.scheduled_date >= today) {
-    return;
+  const latestByChore = new Map<
+    string,
+    { scheduled_date: string; status: string; completed_date: string | null }
+  >();
+  for (const row of (existingList ?? []) as Array<{
+    chore_id: string;
+    scheduled_date: string;
+    status: string;
+    completed_date: string | null;
+  }>) {
+    if (!latestByChore.has(row.chore_id)) latestByChore.set(row.chore_id, row);
   }
 
-  // 기준일: 완료된 적이 있으면 완료일, 미완료로 지나간 회차가 있으면 그 예정일, 아무것도 없으면 null(start_date부터 시작)
-  const baseDate = latest ? (latest.status === "done" ? latest.completed_date : latest.scheduled_date) : null;
-
-  let cursor = computeNextScheduledDate(chore, baseDate);
   const toInsert: { chore_id: string; scheduled_date: string }[] = [];
-  let guard = 0;
-  while (cursor && cursor <= untilDate && guard < 60) {
-    toInsert.push({ chore_id: chore.id, scheduled_date: cursor });
-    if (chore.type === "one_time") break;
-    cursor = computeNextScheduledDate(chore, cursor);
-    guard += 1;
+
+  for (const chore of chores) {
+    const latest = latestByChore.get(chore.id);
+
+    // 다음 회차 계산의 기준일: 완료된 적이 있으면 완료일, 미완료 회차가 있으면 그 예정일,
+    // 아무것도 없으면 null(start_date부터 시작). 미완료 회차가 미래에 있어도(아직 안 지났어도)
+    // 그 다음 회차들을 untilDate까지는 계속 미리 생성해야 캘린더에서 다음 달로 넘어가도
+    // 예정이 비어 보이지 않는다 — 여기서 생성을 멈추지 않는다.
+    const baseDate = latest ? (latest.status === "done" ? latest.completed_date : latest.scheduled_date) : null;
+
+    let cursor = computeNextScheduledDate(chore, baseDate);
+    let guard = 0;
+    while (cursor && cursor <= untilDate && guard < 60) {
+      toInsert.push({ chore_id: chore.id, scheduled_date: cursor });
+      if (chore.type === "one_time") break;
+      cursor = computeNextScheduledDate(chore, cursor);
+      guard += 1;
+    }
   }
 
   if (toInsert.length > 0) {
@@ -231,11 +254,7 @@ export default {
 
           if (choresError) return Response.json({ error: choresError.message }, { status: 500 });
 
-          await Promise.all(
-            ((activeChores ?? []) as Chore[]).map((chore) =>
-              ensureOccurrencesUpTo(ctx.supabaseAdmin, chore, monthWindow.end, today),
-            ),
-          );
+          await ensureOccurrencesUpToBatch(ctx.supabaseAdmin, (activeChores ?? []) as Chore[], monthWindow.end, today);
         }
 
         // 완료 항목은 completed_date 기준, 미완료 항목은 scheduled_date 기준으로 그 달에 속하면 표시 (PRD 규칙)
@@ -313,11 +332,7 @@ export default {
 
       if (choresError) return Response.json({ error: choresError.message }, { status: 500 });
 
-      await Promise.all(
-        ((activeChores ?? []) as Chore[]).map((chore) =>
-          ensureOccurrencesUpTo(ctx.supabaseAdmin, chore, untilDate, today),
-        ),
-      );
+      await ensureOccurrencesUpToBatch(ctx.supabaseAdmin, (activeChores ?? []) as Chore[], untilDate, today);
 
       let query = ctx.supabaseAdmin
         .from("chore_occurrences")
@@ -448,10 +463,10 @@ export default {
         return Response.json({ error: "occurrenceId가 필요해요." }, { status: 400 });
       }
 
-      // 소유권 확인
+      // 소유권 확인 (다음 예정 재계산에 필요한 chore 전체 정보까지 함께 조회)
       const { data: occurrence, error: occError } = await ctx.supabaseAdmin
         .from("chore_occurrences")
-        .select("*, chores!inner(user_id)")
+        .select("*, chores!inner(*)")
         .eq("id", occurrenceId)
         .single();
 
@@ -495,6 +510,24 @@ export default {
         .single();
 
       if (error) return Response.json({ error: error.message }, { status: 500 });
+
+      // 완료 처리는 다음 주기의 새 기준점이 된다(PRD 규칙). 이 occurrence보다 이후에 이미
+      // 생성돼 있던 미완료 예정은 옛 기준으로 계산된 것이라 더 이상 맞지 않으므로 지우고,
+      // 방금 완료한 날짜를 기준으로 다시 계산한다. (캘린더를 미리 넘겨봐서 다음 회차가 이미
+      // 만들어져 있으면, 그 다음 회차가 "최신"으로 잡혀 재계산이 씹히는 버그의 수정)
+      if (shouldComplete) {
+        await ctx.supabaseAdmin
+          .from("chore_occurrences")
+          .delete()
+          .eq("chore_id", occurrence.chore_id)
+          .eq("status", "pending")
+          .gt("scheduled_date", occurrence.scheduled_date);
+
+        if (occurrence.chores.is_active) {
+          await ensureOccurrencesUpTo(ctx.supabaseAdmin, occurrence.chores as Chore, addDays(today, 35), today);
+        }
+      }
+
       return Response.json({ occurrence: data });
     }
 

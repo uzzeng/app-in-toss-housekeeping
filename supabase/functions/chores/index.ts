@@ -174,6 +174,13 @@ export default {
           .gte("scheduled_date", today);
       }
 
+      // 비활성화 시 남은 미완료 예정(과거/미래 구분 없이)을 전부 지운다 — 완료 기록(done)은
+      // 캘린더/히스토리에 계속 남아야 하므로 건드리지 않는다. 재활성화하면 마지막 완료 기록을
+      // 기준으로 다음 예정이 새로 계산된다.
+      if (body.is_active === false) {
+        await ctx.supabaseAdmin.from("chore_occurrences").delete().eq("chore_id", id).eq("status", "pending");
+      }
+
       return Response.json({ chore: data });
     }
 
