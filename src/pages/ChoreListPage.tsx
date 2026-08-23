@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { Button, Checkbox, List, ListRow, useDialog } from '@toss/tds-mobile';
 import { adaptive } from '@toss/tds-colors';
 import { useCurrentUser } from '../hooks/useAnonymousKey';
+import { ErrorBanner } from '../components/ErrorBanner';
+import { toDisplayErrorMessage } from '../lib/errorMessage';
 import { CHORE_TYPE_LABEL, choresCache, deleteChore, fetchChores, updateChore, type Chore } from '../lib/chores';
 
 function describeChore(chore: Chore): string {
@@ -25,14 +27,17 @@ export function ChoreListPage() {
   const [loadingChores, setLoadingChores] = useState(() => !(anonKey && choresCache.has(anonKey)));
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  useEffect(() => {
+  function loadChores() {
     if (!anonKey) return;
     if (!choresCache.has(anonKey)) setLoadingChores(true);
+    setErrorMessage(null);
     fetchChores(anonKey)
       .then(setChores)
-      .catch((error: unknown) => setErrorMessage(error instanceof Error ? error.message : String(error)))
+      .catch((error: unknown) => setErrorMessage(toDisplayErrorMessage(error)))
       .finally(() => setLoadingChores(false));
-  }, [anonKey]);
+  }
+
+  useEffect(loadChores, [anonKey]);
 
   async function handleToggleActive(chore: Chore) {
     if (!anonKey) return;
@@ -44,7 +49,7 @@ export function ChoreListPage() {
         return next;
       });
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : String(error));
+      setErrorMessage(toDisplayErrorMessage(error));
     }
   }
 
@@ -91,7 +96,9 @@ export function ChoreListPage() {
       </p>
 
       {errorMessage && (
-        <p style={{ padding: '0 16px', color: adaptive.red500, fontSize: 13 }}>{errorMessage}</p>
+        <div style={{ padding: '0 16px' }}>
+          <ErrorBanner message={errorMessage} onRetry={loadChores} />
+        </div>
       )}
 
       {loadingChores ? (

@@ -3,9 +3,13 @@ import { useNavigate } from 'react-router-dom';
 import { Asset, IconButton, List, ListRow, Post, useDialog } from '@toss/tds-mobile';
 import { adaptive } from '@toss/tds-colors';
 import { useCurrentUser } from '../hooks/useAnonymousKey';
+import { ErrorBanner } from '../components/ErrorBanner';
+import { toDisplayErrorMessage } from '../lib/errorMessage';
 import {
+  fetchOverdueCount,
   fetchTodayOccurrences,
   fetchWeekOccurrences,
+  overdueCountCache,
   setOccurrenceCompleted,
   todayOccurrencesCache,
   weekOccurrencesCache,
@@ -24,21 +28,26 @@ export function MainPage() {
   const anonKey = currentUser.status === 'success' ? currentUser.user.anonKey : null;
   const [today, setToday] = useState<Occurrence[]>(() => (anonKey ? todayOccurrencesCache.get(anonKey) ?? [] : []));
   const [week, setWeek] = useState<Occurrence[]>(() => (anonKey ? weekOccurrencesCache.get(anonKey) ?? [] : []));
+  const [overdueCount, setOverdueCount] = useState(() => (anonKey ? overdueCountCache.get(anonKey) ?? 0 : 0));
   const [loading, setLoading] = useState(() => !(anonKey && todayOccurrencesCache.has(anonKey)));
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  useEffect(() => {
+  function load() {
     if (!anonKey) return;
     const hasCache = todayOccurrencesCache.has(anonKey);
     if (!hasCache) setLoading(true);
-    Promise.all([fetchTodayOccurrences(anonKey), fetchWeekOccurrences(anonKey)])
-      .then(([todayList, weekList]) => {
+    setErrorMessage(null);
+    Promise.all([fetchTodayOccurrences(anonKey), fetchWeekOccurrences(anonKey), fetchOverdueCount(anonKey)])
+      .then(([todayList, weekList, overdue]) => {
         setToday(todayList);
         setWeek(weekList);
+        setOverdueCount(overdue);
       })
-      .catch((error: unknown) => setErrorMessage(error instanceof Error ? error.message : String(error)))
+      .catch((error: unknown) => setErrorMessage(toDisplayErrorMessage(error)))
       .finally(() => setLoading(false));
-  }, [anonKey]);
+  }
+
+  useEffect(load, [anonKey]);
 
   function applyStatus(list: Occurrence[], id: string, status: Occurrence['status']): Occurrence[] {
     return list.map((o) => (o.id === id ? { ...o, status } : o));
@@ -89,7 +98,7 @@ export function MainPage() {
 
   return (
     <div style={{ padding: '12px 16px 16px' }}>
-      {errorMessage && <p style={{ color: 'red' }}>{errorMessage}</p>}
+      {errorMessage && <ErrorBanner message={errorMessage} onRetry={load} />}
 
       {loading ? (
         <p>불러오는 중...</p>
@@ -106,7 +115,48 @@ export function MainPage() {
             />
           </div>
 
-          <div style={{ display: 'flex', justifyContent: 'center', padding: '8px 0 20px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '8px 0 20px' }}>
+            {overdueCount > 0 && (
+              <button
+                type="button"
+                onClick={() => navigate('/calendar')}
+                className="speech-bubble"
+                style={{
+                  position: 'relative',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  marginBottom: 16,
+                  padding: '8px 16px',
+                  border: 'none',
+                  borderRadius: 24,
+                  background: '#fdf1f1',
+                  cursor: 'pointer',
+                }}
+              >
+                <span
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    width: 18,
+                    height: 18,
+                    borderRadius: '50%',
+                    background: adaptive.red400,
+                    color: '#fff',
+                    fontSize: 12,
+                    fontWeight: 'bold',
+                    fontStyle: 'italic',
+                    flexShrink: 0,
+                  }}
+                >
+                  i
+                </span>
+                <span style={{ fontSize: 14, fontWeight: 600, color: adaptive.grey700 }}>
+                  밀린 집안일 {overdueCount}개, 지금 해볼까요?
+                </span>
+              </button>
+            )}
             <div key={remaining === 0 ? 'happy' : 'sad'} className="character-roll-in">
               <Asset.Image
                 frameShape={{ width: 160 }}

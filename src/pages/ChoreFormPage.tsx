@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { BottomSheet, CTAButton, FixedBottomCTA, IconButton, Post, SegmentedControl, TextField } from '@toss/tds-mobile';
 import { adaptive } from '@toss/tds-colors';
 import { useCurrentUser } from '../hooks/useAnonymousKey';
+import { toDisplayErrorMessage } from '../lib/errorMessage';
 import {
   createChore,
   fetchChores,
@@ -109,8 +110,10 @@ export function ChoreFormPage() {
 
   const anonKey = currentUser.status === 'success' ? currentUser.user.anonKey : null;
 
-  useEffect(() => {
+  function loadChore() {
     if (!anonKey || !editingChoreId) return;
+    setLoadingChore(true);
+    setErrorMessage(null);
     fetchChores(anonKey)
       .then((chores) => {
         const chore = chores.find((c) => c.id === editingChoreId);
@@ -120,9 +123,11 @@ export function ChoreFormPage() {
         }
         setForm(formFromChore(chore));
       })
-      .catch((error: unknown) => setErrorMessage(error instanceof Error ? error.message : String(error)))
+      .catch((error: unknown) => setErrorMessage(toDisplayErrorMessage(error)))
       .finally(() => setLoadingChore(false));
-  }, [anonKey, editingChoreId]);
+  }
+
+  useEffect(loadChore, [anonKey, editingChoreId]);
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -137,7 +142,7 @@ export function ChoreFormPage() {
       }
       navigate('/chores');
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : String(error));
+      setErrorMessage(toDisplayErrorMessage(error));
       setSubmitting(false);
     }
   }

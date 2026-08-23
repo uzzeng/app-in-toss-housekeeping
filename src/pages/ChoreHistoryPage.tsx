@@ -3,6 +3,8 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { Badge, IconButton, TableRow, Text } from '@toss/tds-mobile';
 import { adaptive } from '@toss/tds-colors';
 import { useCurrentUser } from '../hooks/useAnonymousKey';
+import { ErrorBanner } from '../components/ErrorBanner';
+import { toDisplayErrorMessage } from '../lib/errorMessage';
 import { fetchChoreHistory, type ChoreHistoryItem } from '../lib/occurrences';
 import { fetchChores, type Chore } from '../lib/chores';
 
@@ -45,16 +47,20 @@ export function ChoreHistoryPage() {
 
   const anonKey = currentUser.status === 'success' ? currentUser.user.anonKey : null;
 
-  useEffect(() => {
+  function load() {
     if (!anonKey || !id) return;
+    setLoading(true);
+    setErrorMessage(null);
     Promise.all([fetchChores(anonKey), fetchChoreHistory(anonKey, id)])
       .then(([chores, historyData]) => {
         setChore(chores.find((c) => c.id === id) ?? null);
         setHistory(historyData);
       })
-      .catch((error: unknown) => setErrorMessage(error instanceof Error ? error.message : String(error)))
+      .catch((error: unknown) => setErrorMessage(toDisplayErrorMessage(error)))
       .finally(() => setLoading(false));
-  }, [anonKey, id]);
+  }
+
+  useEffect(load, [anonKey, id]);
 
   if (currentUser.status === 'error') {
     return (
@@ -83,7 +89,11 @@ export function ChoreHistoryPage() {
         </p>
       </div>
 
-      {errorMessage && <p style={{ padding: '0 16px', color: adaptive.red500, fontSize: 13 }}>{errorMessage}</p>}
+      {errorMessage && (
+        <div style={{ padding: '0 16px' }}>
+          <ErrorBanner message={errorMessage} onRetry={load} />
+        </div>
+      )}
 
       {loading ? (
         <p style={{ padding: '0 16px' }}>불러오는 중...</p>

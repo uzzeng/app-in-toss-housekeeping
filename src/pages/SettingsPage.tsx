@@ -4,6 +4,8 @@ import { Notification } from '@apps-in-toss/web-framework';
 import { Chip, ChipItem, IconButton, ListRow, Switch } from '@toss/tds-mobile';
 import { adaptive } from '@toss/tds-colors';
 import { useCurrentUser } from '../hooks/useAnonymousKey';
+import { ErrorBanner } from '../components/ErrorBanner';
+import { toDisplayErrorMessage } from '../lib/errorMessage';
 import { fetchSettings, updateSettings, type NotificationSettings } from '../lib/settings';
 
 const REMINDER_DAYS_OPTIONS = [0, 1, 2, 3];
@@ -100,13 +102,17 @@ export function SettingsPage() {
 
   const anonKey = currentUser.status === 'success' ? currentUser.user.anonKey : null;
 
-  useEffect(() => {
+  function load() {
     if (!anonKey) return;
+    setLoading(true);
+    setErrorMessage(null);
     fetchSettings(anonKey)
       .then(setSettings)
-      .catch((error: unknown) => setErrorMessage(error instanceof Error ? error.message : String(error)))
+      .catch((error: unknown) => setErrorMessage(toDisplayErrorMessage(error)))
       .finally(() => setLoading(false));
-  }, [anonKey]);
+  }
+
+  useEffect(load, [anonKey]);
 
   async function save(patch: Partial<NotificationSettings>) {
     if (!anonKey || !settings) return;
@@ -116,7 +122,7 @@ export function SettingsPage() {
       const updated = await updateSettings(anonKey, patch);
       setSettings(updated);
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : String(error));
+      setErrorMessage(toDisplayErrorMessage(error));
       setSettings(prev);
     }
   }
@@ -152,7 +158,11 @@ export function SettingsPage() {
         <p style={{ margin: 0, fontSize: 22, fontWeight: 'bold', color: adaptive.grey900 }}>알림 설정</p>
       </div>
 
-      {errorMessage && <p style={{ padding: '0 16px', color: adaptive.red500, fontSize: 13 }}>{errorMessage}</p>}
+      {errorMessage && (
+        <div style={{ padding: '0 16px' }}>
+          <ErrorBanner message={errorMessage} onRetry={load} />
+        </div>
+      )}
 
       {loading || !settings ? (
         <p style={{ padding: '0 16px' }}>불러오는 중...</p>

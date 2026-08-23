@@ -209,6 +209,22 @@ export default {
       const rangeParam = url.searchParams.get("range");
       const today = todayKst();
 
+      if (rangeParam === "overdueCount") {
+        // 홈 화면 말풍선용: 예정일이 지났는데 아직 완료하지 않은 항목 개수.
+        // count:"exact"+head:true는 중첩 관계(chores!inner) 필터와 조합 시 신뢰할 수 없어
+        // id만 선택해 length로 센다 (range=month 등 다른 조회에서 이미 검증된 패턴과 동일).
+        const { data, error } = await ctx.supabaseAdmin
+          .from("chore_occurrences")
+          .select("id, chores!inner(user_id, is_active)")
+          .eq("chores.user_id", userId)
+          .eq("chores.is_active", true)
+          .eq("status", "pending")
+          .lt("scheduled_date", today);
+
+        if (error) return Response.json({ error: error.message }, { status: 500 });
+        return Response.json({ overdueCount: (data ?? []).length });
+      }
+
       if (rangeParam === "history") {
         const choreId = url.searchParams.get("choreId");
         if (!choreId) {
@@ -515,17 +531,20 @@ export default {
       // 생성돼 있던 미완료 예정은 옛 기준으로 계산된 것이라 더 이상 맞지 않으므로 지우고,
       // 방금 완료한 날짜를 기준으로 다시 계산한다. (캘린더를 미리 넘겨봐서 다음 회차가 이미
       // 만들어져 있으면, 그 다음 회차가 "최신"으로 잡혀 재계산이 씹히는 버그의 수정)
-      if (shouldComplete) {
-        await ctx.supabaseAdmin
-          .from("chore_occurrences")
-          .delete()
-          .eq("chore_id", occurrence.chore_id)
-          .eq("status", "pending")
-          .gt("scheduled_date", occurrence.scheduled_date);
+      //
+      // 체크 해제도 대칭적으로 되돌려야 한다: 완료 처리 때 새로 생성됐던 다음 회차(옛 기준일
+      // 기준)는 더 이상 맞지 않으므로 지우고, 다시 미완료로 돌아간 이 occurrence의 예정일을
+      // 기준으로 재계산한다. 그렇지 않으면 체크 해제 후에도 "취소 시점" 기준으로 계산된 다음
+      // 예정이 그대로 남아, 원래 예정일이 아니라 취소하기 전 완료일 기준으로 계속 잡히는 버그가 생긴다.
+      await ctx.supabaseAdmin
+        .from("chore_occurrences")
+        .delete()
+        .eq("chore_id", occurrence.chore_id)
+        .eq("status", "pending")
+        .gt("scheduled_date", occurrence.scheduled_date);
 
-        if (occurrence.chores.is_active) {
-          await ensureOccurrencesUpTo(ctx.supabaseAdmin, occurrence.chores as Chore, addDays(today, 35), today);
-        }
+      if (occurrence.chores.is_active) {
+        await ensureOccurrencesUpTo(ctx.supabaseAdmin, occurrence.chores as Chore, addDays(today, 35), today);
       }
 
       return Response.json({ occurrence: data });

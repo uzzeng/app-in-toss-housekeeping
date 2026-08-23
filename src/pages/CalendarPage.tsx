@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { BottomSheet, Button, Chip, ChipItem, Checkbox, IconButton, useDialog } from '@toss/tds-mobile';
 import { adaptive } from '@toss/tds-colors';
 import { useCurrentUser } from '../hooks/useAnonymousKey';
+import { ErrorBanner } from '../components/ErrorBanner';
+import { toDisplayErrorMessage } from '../lib/errorMessage';
 import {
   addManualOccurrence,
   deleteManualOccurrence,
@@ -102,26 +104,36 @@ export function CalendarPage() {
   const [pickerCursor, setPickerCursor] = useState({ year: 0, month: 0 });
   const isFirstLoad = useRef(true);
 
-  useEffect(() => {
+  function loadOccurrences() {
     if (!anonKey) return;
     if (!(monthCacheKey && monthOccurrencesCache.has(monthCacheKey))) setLoading(true);
+    setErrorMessage(null);
+    fetchMonthOccurrences(anonKey, toMonthParam(cursor.year, cursor.month))
+      .then(setOccurrences)
+      .catch((error: unknown) => setErrorMessage(toDisplayErrorMessage(error)))
+      .finally(() => setLoading(false));
+  }
+
+  useEffect(() => {
+    if (!anonKey) return;
     // 최초 진입 시에는 오늘 날짜 선택을 유지하고, 이후 달 이동에서만 선택을 해제한다.
     if (isFirstLoad.current) {
       isFirstLoad.current = false;
     } else {
       setSelectedDate(null);
     }
-    fetchMonthOccurrences(anonKey, toMonthParam(cursor.year, cursor.month))
-      .then(setOccurrences)
-      .catch((error: unknown) => setErrorMessage(error instanceof Error ? error.message : String(error)))
-      .finally(() => setLoading(false));
+    loadOccurrences();
   }, [anonKey, cursor]);
 
-  useEffect(() => {
+  function loadChores() {
     if (!anonKey) return;
     fetchChores(anonKey)
       .then(setChores)
-      .catch((error: unknown) => setErrorMessage(error instanceof Error ? error.message : String(error)));
+      .catch((error: unknown) => setErrorMessage(toDisplayErrorMessage(error)));
+  }
+
+  useEffect(() => {
+    loadChores();
   }, [anonKey]);
 
   if (currentUser.status === 'error') {
@@ -268,7 +280,15 @@ export function CalendarPage() {
         </div>
       </div>
 
-      {errorMessage && <p style={{ color: 'red' }}>{errorMessage}</p>}
+      {errorMessage && (
+        <ErrorBanner
+          message={errorMessage}
+          onRetry={() => {
+            loadOccurrences();
+            loadChores();
+          }}
+        />
+      )}
 
       {loading ? (
         <p>불러오는 중...</p>
