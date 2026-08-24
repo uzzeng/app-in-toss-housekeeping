@@ -1,11 +1,29 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import {
+  DndContext,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import { SortableContext, arrayMove, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { Button, Checkbox, List, ListRow, useDialog } from '@toss/tds-mobile';
 import { adaptive } from '@toss/tds-colors';
 import { useCurrentUser } from '../hooks/useAnonymousKey';
 import { ErrorBanner } from '../components/ErrorBanner';
+import { SortableChoreRow } from '../components/SortableChoreRow';
 import { toDisplayErrorMessage } from '../lib/errorMessage';
-import { CHORE_TYPE_LABEL, choresCache, deleteChore, fetchChores, updateChore, type Chore } from '../lib/chores';
+import {
+  CHORE_TYPE_LABEL,
+  choresCache,
+  deleteChore,
+  fetchChores,
+  reorderChores,
+  updateChore,
+  type Chore,
+} from '../lib/chores';
 
 function describeChore(chore: Chore): string {
   if (chore.type === 'one_time') return `${chore.start_date} (1회)`;
@@ -26,6 +44,12 @@ export function ChoreListPage() {
   const [chores, setChores] = useState<Chore[]>(() => (anonKey ? choresCache.get(anonKey) ?? [] : []));
   const [loadingChores, setLoadingChores] = useState(() => !(anonKey && choresCache.has(anonKey)));
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  // 정렬 모드: 드래그로 순서만 바꾸고, 확정(완료) 눌러야 서버에 반영된다.
+  // 진입 시점의 순서를 보관해두었다가 취소하면 그대로 되돌린다.
+  const [reordering, setReordering] = useState(false);
+  const [reorderOriginal, setReorderOriginal] = useState<Chore[]>([]);
+  const [savingOrder, setSavingOrder] = useState(false);
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
   function loadChores() {
     if (!anonKey) return;
@@ -72,6 +96,43 @@ export function ChoreListPage() {
     });
   }
 
+  function handleStartReorder() {
+    setReorderOriginal(chores);
+    setReordering(true);
+  }
+
+  function handleCancelReorder() {
+    setChores(reorderOriginal);
+    setReordering(false);
+  }
+
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    setChores((prev) => {
+      const oldIndex = prev.findIndex((c) => c.id === active.id);
+      const newIndex = prev.findIndex((c) => c.id === over.id);
+      return arrayMove(prev, oldIndex, newIndex);
+    });
+  }
+
+  async function handleConfirmReorder() {
+    if (!anonKey) return;
+    setSavingOrder(true);
+    try {
+      await reorderChores(
+        anonKey,
+        chores.map((c) => c.id),
+      );
+      choresCache.set(anonKey, chores);
+      setReordering(false);
+    } catch (error) {
+      setErrorMessage(toDisplayErrorMessage(error));
+    } finally {
+      setSavingOrder(false);
+    }
+  }
+
   if (currentUser.status === 'error') {
     return (
       <div style={{ padding: 16 }}>
@@ -83,17 +144,24 @@ export function ChoreListPage() {
 
   return (
     <div style={{ padding: '12px 0 16px' }}>
-      <p
-        style={{
-          margin: '0 0 12px',
-          padding: '0 16px',
-          fontSize: 22,
-          fontWeight: 'bold',
-          color: adaptive.grey900,
-        }}
-      >
-        집안일 리스트
-      </p>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 16px', marginBottom: 12 }}>
+        <p style={{ margin: 0, fontSize: 22, fontWeight: 'bold', color: adaptive.grey900 }}>집안일 리스트</p>
+        {!loadingChores && !reordering && chores.length > 1 && (
+          <Button size="small" variant="weak" color="dark" onClick={handleStartReorder}>
+            순서 변경
+          </Button>
+        )}
+        {reordering && (
+          <div style={{ display: 'flex', gap: 6 }}>
+            <Button size="small" variant="weak" onClick={handleCancelReorder} disabled={savingOrder}>
+              취소
+            </Button>
+            <Button size="small" onClick={handleConfirmReorder} loading={savingOrder}>
+              완료
+            </Button>
+          </div>
+        )}
+      </div>
 
       {errorMessage && (
         <div style={{ padding: '0 16px' }}>
@@ -103,6 +171,20 @@ export function ChoreListPage() {
 
       {loadingChores ? (
         <p style={{ padding: '0 16px' }}>불러오는 중...</p>
+      ) : reordering ? (
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <SortableContext items={chores.map((c) => c.id)} strategy={verticalListSortingStrategy}>
+            <List>
+              {chores.map((chore) => (
+                <SortableChoreRow
+                  key={chore.id}
+                  chore={chore}
+                  description={`${CHORE_TYPE_LABEL[chore.type]} ・ ${describeChore(chore)}`}
+                />
+              ))}
+            </List>
+          </SortableContext>
+        </DndContext>
       ) : (
         <List>
           {chores.map((chore) => (

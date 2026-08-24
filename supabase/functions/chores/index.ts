@@ -96,9 +96,39 @@ export default {
       let query = ctx.supabaseAdmin.from("chores").select("*").eq("user_id", userId);
       if (!includeInactive) query = query.eq("is_active", true);
 
-      const { data, error } = await query.order("created_at", { ascending: true });
+      const { data, error } = await query.order("sort_order", { ascending: true });
       if (error) return Response.json({ error: error.message }, { status: 500 });
       return Response.json({ chores: data });
+    }
+
+    // POST /chores?reorder=true — 사용자가 정렬 모드에서 확정한 순서를 한 번에 반영
+    if (req.method === "POST" && url.searchParams.get("reorder") === "true") {
+      const body = await req.json();
+      const ids = (body as { ids?: unknown }).ids;
+      if (!Array.isArray(ids) || ids.some((id) => typeof id !== "string")) {
+        return Response.json({ error: "ids(문자열 배열)가 필요해요." }, { status: 400 });
+      }
+
+      // 본인 소유 chore인지 먼저 확인 — 다른 사용자의 chore id가 섞여 들어와도 그 행은 갱신되지 않지만,
+      // 명확한 에러로 거부하는 편이 안전하다.
+      const { data: owned, error: ownedError } = await ctx.supabaseAdmin
+        .from("chores")
+        .select("id")
+        .eq("user_id", userId)
+        .in("id", ids as string[]);
+
+      if (ownedError) return Response.json({ error: ownedError.message }, { status: 500 });
+      if ((owned ?? []).length !== ids.length) {
+        return Response.json({ error: "요청한 항목 중 본인 소유가 아닌 항목이 있어요." }, { status: 403 });
+      }
+
+      await Promise.all(
+        (ids as string[]).map((id, index) =>
+          ctx.supabaseAdmin.from("chores").update({ sort_order: index }).eq("id", id).eq("user_id", userId),
+        ),
+      );
+
+      return Response.json({ ok: true });
     }
 
     // POST /chores — 신규 등록
@@ -123,9 +153,19 @@ export default {
         );
       }
 
+      // 새 항목은 항상 리스트 맨 끝에 오도록 현재 최대 sort_order + 1을 사용
+      const { data: maxRow } = await ctx.supabaseAdmin
+        .from("chores")
+        .select("sort_order")
+        .eq("user_id", userId)
+        .order("sort_order", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const nextSortOrder = (maxRow?.sort_order ?? -1) + 1;
+
       const { data, error } = await ctx.supabaseAdmin
         .from("chores")
-        .insert({ ...validated.value, user_id: userId })
+        .insert({ ...validated.value, user_id: userId, sort_order: nextSortOrder })
         .select("*")
         .single();
 

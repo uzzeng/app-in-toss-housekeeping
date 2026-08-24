@@ -45,6 +45,7 @@
 | `start_date` | `date` | NOT NULL | — | 최초 시작일 |
 | `is_active` | `boolean` | NOT NULL | `true` | 활성/비활성 여부 (삭제 대신 비활성화) |
 | `board_slot_index` | `integer` | — | — | 바둑돌 집 매핑 자리 (세부 설계 미확정, PRD 오픈 이슈 참고) |
+| `sort_order` | `integer` | NOT NULL | `0` | 집안일 리스트 표시 순서 (2026-08-24 추가, 사용자가 드래그로 직접 지정). 기존 데이터는 사용자별 `created_at` 순으로 초기값 채움, 신규 등록 시 현재 최대값+1로 자동 계산 |
 | `created_at` | `timestamptz` | NOT NULL | `now()` | 생성 시각 |
 | `updated_at` | `timestamptz` | NOT NULL | `now()` | 수정 시각 |
 

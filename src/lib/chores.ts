@@ -24,6 +24,7 @@ export interface Chore {
   start_date: string;
   is_active: boolean;
   board_slot_index: number | null;
+  sort_order: number;
   created_at: string;
   updated_at: string;
 }
@@ -94,6 +95,15 @@ export async function updateChore(
   );
   const { chore } = await parseOrThrow<{ chore: Chore }>(res);
   return chore;
+}
+
+// 정렬 모드에서 확정한 순서(ids, 원하는 순서대로 나열)를 한 번에 서버에 반영한다.
+export async function reorderChores(anonKey: string, ids: string[]): Promise<void> {
+  const res = await fetch(
+    `${FUNCTIONS_URL}/chores?anonKey=${encodeURIComponent(anonKey)}&reorder=true`,
+    { method: 'POST', headers, body: JSON.stringify({ ids }) },
+  );
+  await parseOrThrow<{ ok: boolean }>(res);
 }
 
 export async function deleteChore(anonKey: string, id: string): Promise<void> {
