@@ -57,6 +57,9 @@
 
 body {
   margin: 0;
+  /* 핀치 줌(확대/축소) 제스처만 막고 스크롤(pan)은 그대로 허용 —
+     일부 iOS 웹뷰는 viewport meta의 user-scalable=no를 무시하므로 CSS로 보완 */
+  touch-action: pan-x pan-y;
 }
 
 h1,
@@ -127,6 +130,23 @@ code {
   border-width: 8px 7px 0;
   border-style: solid;
   border-color: #fdf1f1 transparent transparent;
+}
+
+.speech-bubble-blue::after {
+  border-color: var(--adaptiveBlue50) transparent transparent;
+}
+
+@keyframes skeleton-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.skeleton-pulse {
+  animation: skeleton-pulse 1.4s ease-in-out infinite;
 }
 
 @keyframes splash-progress {

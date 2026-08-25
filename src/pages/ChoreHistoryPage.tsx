@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
-import { Badge, IconButton, TableRow, Text } from '@toss/tds-mobile';
+import { useParams } from 'react-router-dom';
+import { Badge, TableRow, Text } from '@toss/tds-mobile';
 import { adaptive } from '@toss/tds-colors';
 import { useCurrentUser } from '../hooks/useAnonymousKey';
 import { ErrorBanner } from '../components/ErrorBanner';
 import { toDisplayErrorMessage } from '../lib/errorMessage';
-import { fetchChoreHistory, type ChoreHistoryItem } from '../lib/occurrences';
-import { fetchChores, type Chore } from '../lib/chores';
+import { choreHistoryCache, fetchChoreHistory, type ChoreHistoryItem } from '../lib/occurrences';
+import { choresCache, fetchChores, type Chore } from '../lib/chores';
 
 const THREE_MONTHS_DAYS = 90;
 
@@ -39,17 +39,21 @@ function computeAverageCycle(history: ChoreHistoryItem[], today: string): number
 export function ChoreHistoryPage() {
   const { id } = useParams<{ id: string }>();
   const currentUser = useCurrentUser();
-  const navigate = useNavigate();
-  const [chore, setChore] = useState<Chore | null>(null);
-  const [history, setHistory] = useState<ChoreHistoryItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
   const anonKey = currentUser.status === 'success' ? currentUser.user.anonKey : null;
+  const historyCacheKey = anonKey && id ? `${anonKey}:${id}` : null;
+  const [chore, setChore] = useState<Chore | null>(() => {
+    if (!anonKey || !id) return null;
+    return choresCache.get(anonKey)?.find((c) => c.id === id) ?? null;
+  });
+  const [history, setHistory] = useState<ChoreHistoryItem[]>(() =>
+    historyCacheKey ? choreHistoryCache.get(historyCacheKey) ?? [] : [],
+  );
+  const [loading, setLoading] = useState(() => !(historyCacheKey && choreHistoryCache.has(historyCacheKey)));
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   function load() {
     if (!anonKey || !id) return;
-    setLoading(true);
+    if (!(historyCacheKey && choreHistoryCache.has(historyCacheKey))) setLoading(true);
     setErrorMessage(null);
     Promise.all([fetchChores(anonKey), fetchChoreHistory(anonKey, id)])
       .then(([chores, historyData]) => {
@@ -76,14 +80,7 @@ export function ChoreHistoryPage() {
 
   return (
     <div style={{ padding: '12px 0 16px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '0 16px', marginBottom: 12 }}>
-        <IconButton
-          aria-label="뒤로"
-          variant="clear"
-          name="icon-arrow-left-mono"
-          iconSize={24}
-          onClick={() => navigate(-1)}
-        />
+      <div style={{ padding: '0 16px', marginBottom: 12 }}>
         <p style={{ margin: 0, fontSize: 22, fontWeight: 'bold', color: adaptive.grey900 }}>
           {chore?.name ?? '집안일 히스토리'}
         </p>

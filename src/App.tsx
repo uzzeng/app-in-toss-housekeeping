@@ -4,6 +4,7 @@ import { AppLayout } from './components/AppLayout';
 import { SplashScreen } from './components/SplashScreen';
 import { CurrentUserProvider, useCurrentUser } from './hooks/useAnonymousKey';
 import { fetchChores } from './lib/chores';
+import { fetchMonthOccurrences } from './lib/occurrences';
 import { MainPage } from './pages/MainPage';
 import { OnboardingPage } from './pages/OnboardingPage';
 import { ChoreListPage } from './pages/ChoreListPage';
@@ -23,8 +24,19 @@ function AppRoutes() {
 
   useEffect(() => {
     if (currentUser.status !== 'success') return;
-    fetchChores(currentUser.user.anonKey)
-      .then((chores) => setEntry({ status: 'checked', goToOnboarding: chores.length === 0 }))
+    const anonKey = currentUser.user.anonKey;
+    fetchChores(anonKey)
+      .then((chores) => {
+        setEntry({ status: 'checked', goToOnboarding: chores.length === 0 });
+
+        // 캘린더 탭을 처음 눌렀을 때도 로딩 없이 바로 보이도록, 이번 달 데이터를 미리 캐시에
+        // 채워둔다(prefetch). entry 판단(스플래시 종료)이 끝난 뒤에 시작해야 같은 네트워크를
+        // 두고 경합하지 않아 홈 화면 진입이 이 요청 때문에 늦어지지 않는다. 실패해도 캘린더
+        // 진입 시 정상적으로 다시 시도되므로 조용히 무시.
+        const now = new Date();
+        const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        fetchMonthOccurrences(anonKey, currentMonth).catch(() => {});
+      })
       .catch(() => setEntry({ status: 'checked', goToOnboarding: false }));
   }, [currentUser]);
 

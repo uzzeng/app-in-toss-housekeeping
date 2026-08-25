@@ -1,10 +1,11 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { BottomSheet, CTAButton, FixedBottomCTA, IconButton, Post, SegmentedControl, TextField } from '@toss/tds-mobile';
+import { BottomSheet, CTAButton, FixedBottomCTA, Post, SegmentedControl, TextField } from '@toss/tds-mobile';
 import { adaptive } from '@toss/tds-colors';
 import { useCurrentUser } from '../hooks/useAnonymousKey';
 import { toDisplayErrorMessage } from '../lib/errorMessage';
 import {
+  choresCache,
   createChore,
   fetchChores,
   updateChore,
@@ -99,20 +100,23 @@ export function ChoreFormPage() {
   const navigate = useNavigate();
   const { id: editingChoreId } = useParams<{ id: string }>();
   const isEditing = Boolean(editingChoreId);
+  const anonKey = currentUser.status === 'success' ? currentUser.user.anonKey : null;
+  // 직전 집안일 리스트 화면에서 choresCache가 이미 채워져 있는 경우가 많으므로, 있으면
+  // 그 값으로 폼을 즉시 채우고 백그라운드로만 최신화한다 (수정 대상을 못 찾은 경우만 로딩 유지).
+  const cachedChore =
+    anonKey && editingChoreId ? choresCache.get(anonKey)?.find((c) => c.id === editingChoreId) ?? null : null;
 
-  const [form, setForm] = useState<FormState>(initialForm);
-  const [loadingChore, setLoadingChore] = useState(isEditing);
+  const [form, setForm] = useState<FormState>(() => (cachedChore ? formFromChore(cachedChore) : initialForm));
+  const [loadingChore, setLoadingChore] = useState(isEditing && !cachedChore);
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [monthSheetOpen, setMonthSheetOpen] = useState(false);
   const [daySheetOpen, setDaySheetOpen] = useState(false);
   const [intervalUnitSheetOpen, setIntervalUnitSheetOpen] = useState(false);
 
-  const anonKey = currentUser.status === 'success' ? currentUser.user.anonKey : null;
-
   function loadChore() {
     if (!anonKey || !editingChoreId) return;
-    setLoadingChore(true);
+    if (!choresCache.get(anonKey)?.some((c) => c.id === editingChoreId)) setLoadingChore(true);
     setErrorMessage(null);
     fetchChores(anonKey)
       .then((chores) => {
@@ -161,14 +165,7 @@ export function ChoreFormPage() {
 
   return (
     <div style={{ padding: '12px 16px 96px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 12 }}>
-        <IconButton
-          aria-label="뒤로"
-          variant="clear"
-          name="icon-arrow-left-mono"
-          iconSize={24}
-          onClick={() => navigate(-1)}
-        />
+      <div style={{ marginBottom: 12 }}>
         <p style={{ margin: 0, fontSize: 22, fontWeight: 'bold', color: adaptive.grey900 }}>
           {isEditing ? '집안일 수정' : '집안일 추가'}
         </p>

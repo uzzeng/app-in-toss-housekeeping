@@ -78,12 +78,16 @@ export interface ChoreHistoryItem {
   completion_type: 'regular' | 'manual';
 }
 
+// chore별로 캐시 키를 나눈다 (anonKey:choreId) — 다른 집안일의 히스토리를 볼 때는 다른 데이터라야 하므로.
+export const choreHistoryCache = new Map<string, ChoreHistoryItem[]>();
+
 export async function fetchChoreHistory(anonKey: string, choreId: string): Promise<ChoreHistoryItem[]> {
   const res = await fetch(
     `${FUNCTIONS_URL}/occurrences?anonKey=${encodeURIComponent(anonKey)}&range=history&choreId=${encodeURIComponent(choreId)}`,
     { headers },
   );
   const { occurrences } = await parseOrThrow<{ occurrences: ChoreHistoryItem[] }>(res);
+  choreHistoryCache.set(`${anonKey}:${choreId}`, occurrences);
   return occurrences;
 }
 

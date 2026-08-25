@@ -90,6 +90,14 @@ export default {
 
     const userId = user.id as string;
 
+    // GET /chores?countOnly=true — 홈 화면에서 "집안일을 하나라도 등록했는지"만 가볍게 확인하는 용도.
+    // 비활성화만 해둔 사용자도 "등록한 적은 있다"로 취급해야 하므로 활성/비활성 구분 없이 전체를 센다.
+    if (req.method === "GET" && url.searchParams.get("countOnly") === "true") {
+      const { data, error } = await ctx.supabaseAdmin.from("chores").select("id").eq("user_id", userId);
+      if (error) return Response.json({ error: error.message }, { status: 500 });
+      return Response.json({ count: (data ?? []).length });
+    }
+
     // GET /chores — 내 집안일 목록 조회 (기본: 활성 항목만)
     if (req.method === "GET") {
       const includeInactive = url.searchParams.get("includeInactive") === "true";

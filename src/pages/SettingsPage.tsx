@@ -1,12 +1,11 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { Notification } from '@apps-in-toss/web-framework';
-import { Chip, ChipItem, IconButton, ListRow, Switch } from '@toss/tds-mobile';
+import { Chip, ChipItem, ListRow, Switch } from '@toss/tds-mobile';
 import { adaptive } from '@toss/tds-colors';
 import { useCurrentUser } from '../hooks/useAnonymousKey';
 import { ErrorBanner } from '../components/ErrorBanner';
 import { toDisplayErrorMessage } from '../lib/errorMessage';
-import { fetchSettings, updateSettings, type NotificationSettings } from '../lib/settings';
+import { fetchSettings, settingsCache, updateSettings, type NotificationSettings } from '../lib/settings';
 
 const REMINDER_DAYS_OPTIONS = [0, 1, 2, 3];
 const REMINDER_DAYS_LABEL: Record<number, string> = { 0: '필요없음' };
@@ -95,16 +94,16 @@ function ToggleSection({ title, description, enabled, onToggle, time, onTimeChan
 
 export function SettingsPage() {
   const currentUser = useCurrentUser();
-  const navigate = useNavigate();
-  const [settings, setSettings] = useState<NotificationSettings | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
   const anonKey = currentUser.status === 'success' ? currentUser.user.anonKey : null;
+  const [settings, setSettings] = useState<NotificationSettings | null>(() =>
+    anonKey ? settingsCache.get(anonKey) ?? null : null,
+  );
+  const [loading, setLoading] = useState(() => !(anonKey && settingsCache.has(anonKey)));
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   function load() {
     if (!anonKey) return;
-    setLoading(true);
+    if (!settingsCache.has(anonKey)) setLoading(true);
     setErrorMessage(null);
     fetchSettings(anonKey)
       .then(setSettings)
@@ -124,6 +123,7 @@ export function SettingsPage() {
     } catch (error) {
       setErrorMessage(toDisplayErrorMessage(error));
       setSettings(prev);
+      settingsCache.set(anonKey, prev);
     }
   }
 
@@ -147,14 +147,7 @@ export function SettingsPage() {
 
   return (
     <div style={{ padding: '12px 0 16px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '0 16px', marginBottom: 12 }}>
-        <IconButton
-          aria-label="뒤로"
-          variant="clear"
-          name="icon-arrow-left-mono"
-          iconSize={24}
-          onClick={() => navigate(-1)}
-        />
+      <div style={{ padding: '0 16px', marginBottom: 12 }}>
         <p style={{ margin: 0, fontSize: 22, fontWeight: 'bold', color: adaptive.grey900 }}>알림 설정</p>
       </div>
 

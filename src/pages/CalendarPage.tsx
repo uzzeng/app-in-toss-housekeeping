@@ -13,6 +13,7 @@ import {
   type Occurrence,
 } from '../lib/occurrences';
 import { CHORE_TYPE_LABEL, choresCache, fetchChores, type Chore } from '../lib/chores';
+import { Skeleton } from '../components/Skeleton';
 
 const WEEKDAY = ['일', '월', '화', '수', '목', '금', '토'];
 
@@ -291,7 +292,33 @@ export function CalendarPage() {
       )}
 
       {loading ? (
-        <p>불러오는 중...</p>
+        <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+          <thead>
+            <tr>
+              {WEEKDAY.map((w) => (
+                <th
+                  key={w}
+                  style={{ fontSize: 12, color: '#888', fontWeight: 'normal', padding: 0, textAlign: 'center' }}
+                >
+                  {w}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {Array.from({ length: 5 }, (_, wi) => (
+              <tr key={wi}>
+                {Array.from({ length: 7 }, (_, di) => (
+                  <td key={di} style={{ height: 44, textAlign: 'center', padding: 0 }}>
+                    <div style={{ display: 'flex', justifyContent: 'center' }}>
+                      <Skeleton width={32} height={32} borderRadius={10} />
+                    </div>
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
       ) : (
         <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
           <thead>

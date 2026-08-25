@@ -5,6 +5,7 @@ import { adaptive } from '@toss/tds-colors';
 import { useCurrentUser } from '../hooks/useAnonymousKey';
 import { ErrorBanner } from '../components/ErrorBanner';
 import { toDisplayErrorMessage } from '../lib/errorMessage';
+import { choreCountCache, fetchChoreCount } from '../lib/chores';
 import {
   fetchOverdueCount,
   fetchTodayOccurrences,
@@ -29,6 +30,7 @@ export function MainPage() {
   const [today, setToday] = useState<Occurrence[]>(() => (anonKey ? todayOccurrencesCache.get(anonKey) ?? [] : []));
   const [week, setWeek] = useState<Occurrence[]>(() => (anonKey ? weekOccurrencesCache.get(anonKey) ?? [] : []));
   const [overdueCount, setOverdueCount] = useState(() => (anonKey ? overdueCountCache.get(anonKey) ?? 0 : 0));
+  const [choreCount, setChoreCount] = useState(() => (anonKey ? choreCountCache.get(anonKey) ?? null : null) as number | null);
   const [loading, setLoading] = useState(() => !(anonKey && todayOccurrencesCache.has(anonKey)));
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -37,11 +39,17 @@ export function MainPage() {
     const hasCache = todayOccurrencesCache.has(anonKey);
     if (!hasCache) setLoading(true);
     setErrorMessage(null);
-    Promise.all([fetchTodayOccurrences(anonKey), fetchWeekOccurrences(anonKey), fetchOverdueCount(anonKey)])
-      .then(([todayList, weekList, overdue]) => {
+    Promise.all([
+      fetchTodayOccurrences(anonKey),
+      fetchWeekOccurrences(anonKey),
+      fetchOverdueCount(anonKey),
+      fetchChoreCount(anonKey),
+    ])
+      .then(([todayList, weekList, overdue, count]) => {
         setToday(todayList);
         setWeek(weekList);
         setOverdueCount(overdue);
+        setChoreCount(count);
       })
       .catch((error: unknown) => setErrorMessage(toDisplayErrorMessage(error)))
       .finally(() => setLoading(false));
@@ -155,6 +163,31 @@ export function MainPage() {
                 <span style={{ fontSize: 14, fontWeight: 600, color: adaptive.grey700 }}>
                   밀린 집안일 {overdueCount}개, 지금 해볼까요?
                 </span>
+                <Asset.Icon name="icon-arrow-right-mono" color={adaptive.grey500} aria-hidden={true} />
+              </button>
+            )}
+            {overdueCount === 0 && choreCount === 0 && (
+              <button
+                type="button"
+                onClick={() => navigate('/chores')}
+                className="speech-bubble speech-bubble-blue"
+                style={{
+                  position: 'relative',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  marginBottom: 16,
+                  padding: '8px 16px',
+                  border: 'none',
+                  borderRadius: 24,
+                  background: adaptive.blue50,
+                  cursor: 'pointer',
+                }}
+              >
+                <span style={{ fontSize: 14, fontWeight: 600, color: adaptive.grey900 }}>
+                  첫 번째 집안일을 등록하러 가볼까요?
+                </span>
+                <Asset.Icon name="icon-arrow-right-mono" color={adaptive.grey500} aria-hidden={true} />
               </button>
             )}
             <div key={remaining === 0 ? 'happy' : 'sad'} className="character-roll-in">

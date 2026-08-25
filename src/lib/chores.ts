@@ -74,6 +74,19 @@ export async function fetchChores(anonKey: string): Promise<Chore[]> {
   return chores;
 }
 
+// 홈 화면의 "첫 집안일 등록" 말풍선 노출 판단용 — 전체 목록을 안 가져오고 개수만 가볍게 확인
+export const choreCountCache = new Map<string, number>();
+
+export async function fetchChoreCount(anonKey: string): Promise<number> {
+  const res = await fetch(
+    `${FUNCTIONS_URL}/chores?anonKey=${encodeURIComponent(anonKey)}&countOnly=true`,
+    { headers },
+  );
+  const { count } = await parseOrThrow<{ count: number }>(res);
+  choreCountCache.set(anonKey, count);
+  return count;
+}
+
 export async function createChore(anonKey: string, input: ChoreInput): Promise<Chore> {
   const res = await fetch(`${FUNCTIONS_URL}/chores?anonKey=${encodeURIComponent(anonKey)}`, {
     method: 'POST',
