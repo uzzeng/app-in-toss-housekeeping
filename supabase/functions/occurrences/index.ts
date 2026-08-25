@@ -260,18 +260,19 @@ export default {
           return Response.json({ error: "month 파라미터가 필요해요 (형식: YYYY-MM)." }, { status: 400 });
         }
 
-        // 캘린더는 지나간 달을 조회할 수도 있으므로, occurrence 생성은 오늘 이후(현재/미래) 달에만 수행.
-        if (monthWindow.end >= today) {
-          const { data: activeChores, error: choresError } = await ctx.supabaseAdmin
-            .from("chores")
-            .select("*")
-            .eq("user_id", userId)
-            .eq("is_active", true);
+        // 과거 달이라도 생성을 건너뛰지 않는다 — start_date가 과거로 수정되거나(예: 최초 시작일을
+        // 지난달로 변경) chore_id의 occurrence가 아직 하나도 없는 상태에서 과거 달을 조회하면,
+        // "과거 달은 스킵"하는 최적화가 그 chore의 최초 occurrence를 영원히 생성하지 못하게 막는
+        // 버그가 있었다(예: 8월에 시작일을 7월로 수정해도 7월 캘린더에 아무것도 안 뜸).
+        const { data: activeChores, error: choresError } = await ctx.supabaseAdmin
+          .from("chores")
+          .select("*")
+          .eq("user_id", userId)
+          .eq("is_active", true);
 
-          if (choresError) return Response.json({ error: choresError.message }, { status: 500 });
+        if (choresError) return Response.json({ error: choresError.message }, { status: 500 });
 
-          await ensureOccurrencesUpToBatch(ctx.supabaseAdmin, (activeChores ?? []) as Chore[], monthWindow.end, today);
-        }
+        await ensureOccurrencesUpToBatch(ctx.supabaseAdmin, (activeChores ?? []) as Chore[], monthWindow.end, today);
 
         // 완료 항목은 completed_date 기준, 미완료 항목은 scheduled_date 기준으로 그 달에 속하면 표시 (PRD 규칙)
         const [{ data: doneData, error: doneError }, { data: pendingData, error: pendingError }] = await Promise.all([
