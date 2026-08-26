@@ -66,8 +66,9 @@ const DAY_OPTIONS = Array.from({ length: 31 }, (_, i) => ({ name: `${i + 1}일`,
 const INTERVAL_UNIT_OPTIONS = [
   { name: '일마다', value: 'day' },
   { name: '주마다', value: 'week' },
+  { name: '개월마다', value: 'month' },
 ];
-const INTERVAL_UNIT_LABEL: Record<IntervalUnit, string> = { day: '일마다', week: '주마다' };
+const INTERVAL_UNIT_LABEL: Record<IntervalUnit, string> = { day: '일마다', week: '주마다', month: '개월마다' };
 
 function buildChoreInput(form: FormState): ChoreInput {
   const base: ChoreInput = {
@@ -180,18 +181,22 @@ export function ChoreFormPage() {
         onSubmit={handleSubmit}
         style={{ display: 'flex', flexDirection: 'column', gap: 20 }}
       >
-        <TextField.Clearable
-          variant="box"
-          label="이름"
-          labelOption="sustain"
-          placeholder="집안일 이름 입력"
-          value={form.name}
-          onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-          required
-        />
+        <div>
+          <Post.Paragraph paddingBottom={8} typography="t6" fontWeight="medium" color={adaptive.grey900}>
+            이름
+          </Post.Paragraph>
+          <TextField.Clearable
+            variant="box"
+            paddingTop={0}
+            placeholder="집안일 이름 입력"
+            value={form.name}
+            onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+            required
+          />
+        </div>
 
         <div>
-          <Post.Paragraph paddingBottom={8} typography="t7" color={adaptive.grey600}>
+          <Post.Paragraph paddingBottom={8} typography="t6" fontWeight="medium" color={adaptive.grey900}>
             유형
           </Post.Paragraph>
           <SegmentedControl
@@ -210,7 +215,7 @@ export function ChoreFormPage() {
         {form.type === 'general' && (
           <>
             <div>
-              <Post.Paragraph paddingBottom={8} typography="t7" color={adaptive.grey600}>
+              <Post.Paragraph paddingBottom={8} typography="t6" fontWeight="medium" color={adaptive.grey900}>
                 반복 방식
               </Post.Paragraph>
               <SegmentedControl
@@ -224,24 +229,39 @@ export function ChoreFormPage() {
                   날짜 고정
                 </SegmentedControl.Item>
               </SegmentedControl>
-            </div>
-
-            {form.repeatMode === 'interval' && (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', alignItems: 'center', gap: 4 }}>
-                <TextField.Clearable
-                  variant="box"
-                  placeholder="숫자 입력"
-                  value={form.intervalValue}
-                  onChange={(e) => setForm((f) => ({ ...f, intervalValue: onlyDigits(e.target.value) }))}
-                  containerProps={{ style: { width: '100%', boxSizing: 'border-box' } }}
-                />
-                <TextField.Button
-                  variant="box"
-                  placeholder={INTERVAL_UNIT_LABEL[form.intervalUnit]}
-                  onClick={() => setIntervalUnitSheetOpen(true)}
-                />
+              <div style={{ marginTop: 8 }}>
+                <Post.Paragraph typography="st11" color={adaptive.grey500}>
+                  {form.repeatMode === 'interval'
+                    ? '* 완료한 날을 기준으로 다음 일정이 변경돼요'
+                    : '* 완료 여부와 관계없이 정해진 날짜에 일정이 반복돼요'}
+                </Post.Paragraph>
               </div>
-            )}
+
+              {form.repeatMode === 'interval' && (
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '1fr 1fr',
+                    alignItems: 'center',
+                    gap: 4,
+                    marginTop: 8,
+                  }}
+                >
+                  <TextField.Clearable
+                    variant="box"
+                    placeholder="숫자 입력"
+                    value={form.intervalValue}
+                    onChange={(e) => setForm((f) => ({ ...f, intervalValue: onlyDigits(e.target.value) }))}
+                    containerProps={{ style: { width: '100%', boxSizing: 'border-box' } }}
+                  />
+                  <TextField.Button
+                    variant="box"
+                    placeholder={INTERVAL_UNIT_LABEL[form.intervalUnit]}
+                    onClick={() => setIntervalUnitSheetOpen(true)}
+                  />
+                </div>
+              )}
+            </div>
 
             {form.repeatMode === 'fixed_date' && (
               <div>
@@ -283,16 +303,20 @@ export function ChoreFormPage() {
           </>
         )}
 
-        <TextField.Clearable
-          variant="box"
-          label="최초 시작일"
-          labelOption="sustain"
-          type="date"
-          placeholder="날짜 선택"
-          value={form.startDate}
-          onChange={(e) => setForm((f) => ({ ...f, startDate: e.target.value }))}
-          required
-        />
+        <div>
+          <Post.Paragraph paddingBottom={8} typography="t6" fontWeight="medium" color={adaptive.grey900}>
+            최초 시작일
+          </Post.Paragraph>
+          <TextField.Clearable
+            variant="box"
+            paddingTop={0}
+            type="date"
+            placeholder="날짜 선택"
+            value={form.startDate}
+            onChange={(e) => setForm((f) => ({ ...f, startDate: e.target.value }))}
+            required
+          />
+        </div>
       </form>
 
       <BottomSheet

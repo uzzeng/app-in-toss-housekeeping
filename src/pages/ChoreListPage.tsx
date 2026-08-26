@@ -32,7 +32,7 @@ function describeChore(chore: Chore): string {
       ? `매년 ${chore.fixed_month}월 ${chore.fixed_day}일`
       : `매달 ${chore.fixed_day}일`;
   }
-  const unitLabel = chore.interval_unit === 'week' ? '주' : '일';
+  const unitLabel = chore.interval_unit === 'week' ? '주' : chore.interval_unit === 'month' ? '개월' : '일';
   return `${chore.interval_value}${unitLabel}마다`;
 }
 

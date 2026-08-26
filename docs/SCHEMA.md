@@ -35,11 +35,11 @@
 | `id` | `uuid` | PK | `gen_random_uuid()` | 집안일 식별자 |
 | `user_id` | `uuid` | NOT NULL, FK → `users.id` (`ON DELETE CASCADE`) | — | 소유 사용자 |
 | `name` | `text` | NOT NULL | — | 집안일 이름 |
-| `type` | `text` | NOT NULL, CHECK IN (`general`, `annual_fixed`, `one_time`) | — | 유형: 일반 반복형 / 연1회 고정시즌형 / 수시 등록형 |
+| `type` | `text` | NOT NULL, CHECK IN (`general`, `one_time`) | — | 유형: 일반 반복형 / 수시 등록형 (2026-08-26: `annual_fixed`는 코드에서 이미 제거된 지 오래였는데 DB 제약만 남아있던 걸 뒤늦게 정리) |
 | `repeat_mode` | `text` | CHECK IN (`fixed_date`, `interval`) | — | 일반 반복형(`general`)일 때만 사용: 날짜 고정 / 주기 |
 | `interval_value` | `integer` | — | — | `repeat_mode = interval`일 때 주기 값 (예: 3) |
-| `interval_unit` | `text` | CHECK IN (`day`, `week`) | — | `repeat_mode = interval`일 때 주기 단위 |
-| `fixed_unit` | `text` | CHECK IN (`month`, `year`) | — | `repeat_mode = fixed_date` 또는 `type = annual_fixed`일 때 반복 단위 |
+| `interval_unit` | `text` | CHECK IN (`day`, `week`, `month`) | — | `repeat_mode = interval`일 때 주기 단위 (2026-08-26 `month` 추가) |
+| `fixed_unit` | `text` | CHECK IN (`month`, `year`) | — | `repeat_mode = fixed_date`일 때 반복 단위 |
 | `fixed_month` | `integer` | CHECK (1~12) | — | 고정 날짜의 월 (매년 반복일 때만 사용) |
 | `fixed_day` | `integer` | CHECK (1~31) | — | 고정 날짜의 일 |
 | `start_date` | `date` | NOT NULL | — | 최초 시작일 |

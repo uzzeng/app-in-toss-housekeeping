@@ -2,7 +2,7 @@ const FUNCTIONS_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`;
 
 export type ChoreType = 'general' | 'one_time';
 export type RepeatMode = 'fixed_date' | 'interval';
-export type IntervalUnit = 'day' | 'week';
+export type IntervalUnit = 'day' | 'week' | 'month';
 export type FixedUnit = 'month' | 'year';
 
 export const CHORE_TYPE_LABEL: Record<ChoreType, string> = {

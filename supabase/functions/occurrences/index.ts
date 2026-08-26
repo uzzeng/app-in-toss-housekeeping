@@ -12,7 +12,7 @@ interface Chore {
   type: "general" | "one_time";
   repeat_mode: "fixed_date" | "interval" | null;
   interval_value: number | null;
-  interval_unit: "day" | "week" | null;
+  interval_unit: "day" | "week" | "month" | null;
   fixed_unit: "month" | "year" | null;
   fixed_month: number | null;
   fixed_day: number | null;
@@ -93,9 +93,36 @@ function nextFixedDate(
   return candidate;
 }
 
+// interval(상대 주기, 개월) 전용: 기준일(from)로부터 n개월 후를 계산하되, 목표 "일"은 항상
+// targetDay(보통 chore.start_date의 일)를 그대로 사용한다. from 자체의 일(day)을 목표로 삼으면
+// 말일 보정이 한 번 일어난 뒤(예: 1/31 -> 2/28) 그 보정값(28)이 다음 계산의 목표로 굳어버려서,
+// 원래 목표였던 31이 영구히 사라지는 버그가 있었다(7/31 -> 8/31 -> 9/30(보정) -> 10/30(!) 처럼
+// 계속 앞으로 줄어듦). 목표 일이 그 달에 없으면 nextFixedDate와 동일하게 그 달의 마지막 날로 보정.
+function addMonths(from: string, months: number, targetDay: number): string {
+  const fromDate = new Date(`${from}T00:00:00Z`);
+  let year = fromDate.getUTCFullYear();
+  let month = fromDate.getUTCMonth() + 1 + months;
+  while (month > 12) {
+    month -= 12;
+    year += 1;
+  }
+  const day = Math.min(targetDay, lastDayOfMonth(year, month));
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
 // chore와 "이미 있는 occurrence 중 가장 최근 것"을 바탕으로 다음 생성해야 할 예정일을 계산.
 // 없으면 start_date를 최초 예정일로 사용.
-function computeNextScheduledDate(chore: Chore, lastOccurrenceDate: string | null): string | null {
+// monthTargetDay: interval(개월) 전용 — "매달 며칠에 맞출지"의 기준. 이 값은 호출부에서 한 번만
+// 정해서 이후 같은 chore의 모든 후속 회차 계산에 그대로 재사용해야 한다. PRD 규칙상 완료 처리는
+// 다음 주기의 새 기준점이 되므로(예: 7/31 예정을 8/6에 완료하면 다음은 9/6, 그다음도 10/6...),
+// 완료된 적이 있으면 그 완료일의 일을, 없으면 start_date의 일을 기준으로 삼는다. 매 회차마다
+// "직전 occurrence의 실제 날짜"에서 다시 뽑으면, 말일 보정(예: 9월엔 31일 없음)이 한 번 일어난
+// 뒤 그 보정값이 다음 목표로 굳어버려 원래 목표 일이 영구히 사라지는 버그가 생긴다.
+function computeNextScheduledDate(
+  chore: Chore,
+  lastOccurrenceDate: string | null,
+  monthTargetDay: number,
+): string | null {
   if (chore.type === "one_time") {
     return lastOccurrenceDate ? null : chore.start_date;
   }
@@ -108,6 +135,9 @@ function computeNextScheduledDate(chore: Chore, lastOccurrenceDate: string | nul
 
   // interval
   if (!lastOccurrenceDate) return chore.start_date;
+  if (chore.interval_unit === "month") {
+    return addMonths(lastOccurrenceDate, chore.interval_value ?? 1, monthTargetDay);
+  }
   const days = chore.interval_unit === "week" ? (chore.interval_value ?? 1) * 7 : chore.interval_value ?? 1;
   return addDays(lastOccurrenceDate, days);
 }
@@ -167,14 +197,21 @@ async function ensureOccurrencesUpToBatch(
     // 아무것도 없으면 null(start_date부터 시작). 미완료 회차가 미래에 있어도(아직 안 지났어도)
     // 그 다음 회차들을 untilDate까지는 계속 미리 생성해야 캘린더에서 다음 달로 넘어가도
     // 예정이 비어 보이지 않는다 — 여기서 생성을 멈추지 않는다.
-    const baseDate = latest ? (latest.status === "done" ? latest.completed_date : latest.scheduled_date) : null;
+    const baseIsCompletion = latest?.status === "done";
+    const baseDate = latest ? (baseIsCompletion ? latest.completed_date : latest.scheduled_date) : null;
 
-    let cursor = computeNextScheduledDate(chore, baseDate);
+    // interval(개월)의 매달 기준일 — 완료된 적이 있으면 그 완료일의 일을, 없으면 start_date의
+    // 일을 이 chore의 모든 후속 회차 계산에 고정으로 재사용한다 (함수 상단 주석 참고).
+    const monthTargetDay = Number(
+      (baseIsCompletion && baseDate ? baseDate : chore.start_date).slice(8, 10),
+    );
+
+    let cursor = computeNextScheduledDate(chore, baseDate, monthTargetDay);
     let guard = 0;
     while (cursor && cursor <= untilDate && guard < 60) {
       toInsert.push({ chore_id: chore.id, scheduled_date: cursor });
       if (chore.type === "one_time") break;
-      cursor = computeNextScheduledDate(chore, cursor);
+      cursor = computeNextScheduledDate(chore, cursor, monthTargetDay);
       guard += 1;
     }
   }

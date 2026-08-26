@@ -15,7 +15,7 @@ interface ChoreInput {
   type: ChoreType;
   repeat_mode?: RepeatMode;
   interval_value?: number;
-  interval_unit?: "day" | "week";
+  interval_unit?: "day" | "week" | "month";
   fixed_unit?: "month" | "year";
   fixed_month?: number;
   fixed_day?: number;
@@ -46,8 +46,8 @@ function validateChoreInput(input: unknown): { ok: true; value: ChoreInput } | {
       if (typeof body.interval_value !== "number" || body.interval_value <= 0) {
         return { ok: false, error: "interval 방식은 interval_value(양수)가 필요해요." };
       }
-      if (body.interval_unit !== "day" && body.interval_unit !== "week") {
-        return { ok: false, error: "interval 방식은 interval_unit(day/week)이 필요해요." };
+      if (body.interval_unit !== "day" && body.interval_unit !== "week" && body.interval_unit !== "month") {
+        return { ok: false, error: "interval 방식은 interval_unit(day/week/month)이 필요해요." };
       }
     }
     if (body.repeat_mode === "fixed_date") {
@@ -198,8 +198,11 @@ export default {
 
       if (error) return Response.json({ error: error.message }, { status: 500 });
 
-      // 반복 규칙이 바뀐 경우, 옛 규칙으로 이미 생성된 미래 미완료 예정은 더 이상 맞지 않으므로
-      // 지운다. 다음 occurrences 조회 시 ensureOccurrencesUpTo가 새 규칙으로 재생성한다.
+      // 반복 규칙이 바뀐 경우, 옛 규칙으로 이미 생성된 미완료 예정은 더 이상 맞지 않으므로
+      // 과거/미래 구분 없이 전부 지운다. 다음 occurrences 조회 시 ensureOccurrencesUpTo가 새
+      // 규칙으로 재생성한다. (예전에는 "오늘 이후" 것만 지웠는데, start_date를 오늘보다 이전
+      // 날짜로 수정하면 이미 만들어져 있던 미래 occurrence가 삭제 대상에서 빠져 옛 날짜가 캘린더에
+      // 그대로 남는 버그가 있었음 — 비활성화 시 pending 삭제와 동일하게 전체 삭제로 통일)
       const SCHEDULE_FIELDS = [
         "type",
         "repeat_mode",
@@ -212,14 +215,7 @@ export default {
       ];
       const scheduleChanged = Object.keys(body).some((key) => SCHEDULE_FIELDS.includes(key));
       if (scheduleChanged) {
-        // KST 자정 기준 "오늘" — UTC 기준이면 KST 00:00~08:59 사이에 하루 어긋난다.
-        const today = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
-        await ctx.supabaseAdmin
-          .from("chore_occurrences")
-          .delete()
-          .eq("chore_id", id)
-          .eq("status", "pending")
-          .gte("scheduled_date", today);
+        await ctx.supabaseAdmin.from("chore_occurrences").delete().eq("chore_id", id).eq("status", "pending");
       }
 
       // 비활성화 시 남은 미완료 예정(과거/미래 구분 없이)을 전부 지운다 — 완료 기록(done)은
