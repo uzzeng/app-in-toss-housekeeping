@@ -4,6 +4,7 @@ import { BottomSheet, CTAButton, FixedBottomCTA, Post, SegmentedControl, TextFie
 import { adaptive } from '@toss/tds-colors';
 import { useCurrentUser } from '../hooks/useAnonymousKey';
 import { toDisplayErrorMessage } from '../lib/errorMessage';
+import { todayKst } from '../lib/date';
 import {
   choresCache,
   createChore,
@@ -29,7 +30,8 @@ interface FormState {
   startDate: string;
 }
 
-const initialForm: FormState = {
+// 앱을 켠 시점에 한 번만 계산되면 날짜가 바뀐 뒤에도 옛 날짜가 시작일 기본값이 되므로, 폼을 열 때마다 만든다.
+const makeInitialForm = (): FormState => ({
   name: '',
   type: 'general',
   repeatMode: 'interval',
@@ -38,8 +40,8 @@ const initialForm: FormState = {
   fixedUnit: 'month',
   fixedMonth: '1',
   fixedDay: '1',
-  startDate: new Date().toISOString().slice(0, 10),
-};
+  startDate: todayKst(),
+});
 
 function formFromChore(chore: Chore): FormState {
   return {
@@ -107,7 +109,7 @@ export function ChoreFormPage() {
   const cachedChore =
     anonKey && editingChoreId ? choresCache.get(anonKey)?.find((c) => c.id === editingChoreId) ?? null : null;
 
-  const [form, setForm] = useState<FormState>(() => (cachedChore ? formFromChore(cachedChore) : initialForm));
+  const [form, setForm] = useState<FormState>(() => (cachedChore ? formFromChore(cachedChore) : makeInitialForm()));
   const [loadingChore, setLoadingChore] = useState(isEditing && !cachedChore);
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);

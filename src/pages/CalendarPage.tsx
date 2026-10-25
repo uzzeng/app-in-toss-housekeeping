@@ -4,6 +4,7 @@ import { adaptive } from '@toss/tds-colors';
 import { useCurrentUser } from '../hooks/useAnonymousKey';
 import { ErrorBanner } from '../components/ErrorBanner';
 import { toDisplayErrorMessage } from '../lib/errorMessage';
+import { todayKst } from '../lib/date';
 import {
   addManualOccurrence,
   deleteManualOccurrence,
@@ -21,10 +22,6 @@ type DotColor = 'blue' | 'red' | 'grey' | null;
 
 function toMonthParam(year: number, month0to11: number): string {
   return `${year}-${String(month0to11 + 1).padStart(2, '0')}`;
-}
-
-function todayKey(): string {
-  return new Date().toISOString().slice(0, 10);
 }
 
 function displayDateOf(o: Occurrence): string {
@@ -95,7 +92,7 @@ export function CalendarPage() {
   const [loading, setLoading] = useState(() => !(monthCacheKey && monthOccurrencesCache.has(monthCacheKey)));
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   // 캘린더 진입 시에는 오늘 날짜가 기본으로 선택되어 있어야 한다.
-  const [selectedDate, setSelectedDate] = useState<string | null>(() => todayKey());
+  const [selectedDate, setSelectedDate] = useState<string | null>(() => todayKst());
   const [chores, setChores] = useState<Chore[]>(() => (anonKey ? choresCache.get(anonKey) ?? [] : []));
   const [addingChoreId, setAddingChoreId] = useState<string | null>(null);
   const [pickedChoreId, setPickedChoreId] = useState<string | null>(null);
@@ -155,7 +152,7 @@ export function CalendarPage() {
   }
 
   const weeks = buildMonthGrid(cursor.year, cursor.month);
-  const today = todayKey();
+  const today = todayKst();
   const activeChores = chores.filter((c) => c.is_active);
 
   async function handleAddManual() {
@@ -180,7 +177,7 @@ export function CalendarPage() {
     if (!anonKey) return;
     const nextCompleted = o.status !== 'done';
     const nextStatus: Occurrence['status'] = nextCompleted ? 'done' : 'pending';
-    const nextCompletedDate = nextCompleted ? new Date().toISOString().slice(0, 10) : null;
+    const nextCompletedDate = nextCompleted ? todayKst() : null;
 
     // 완료 처리는 오늘 예정일이 아닌 날짜에도 발생할 수 있으므로(캘린더에서 과거 미완료 건 완료 처리 등)
     // 표시 기준 날짜(displayDateOf)가 바뀔 수 있다 — 목록을 새로 계산하기보다 그대로 두고 상태만 갱신한다.

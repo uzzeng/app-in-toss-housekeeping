@@ -5,6 +5,7 @@ import { adaptive } from '@toss/tds-colors';
 import { useCurrentUser } from '../hooks/useAnonymousKey';
 import { ErrorBanner } from '../components/ErrorBanner';
 import { toDisplayErrorMessage } from '../lib/errorMessage';
+import { todayKst } from '../lib/date';
 import { choreHistoryCache, fetchChoreHistory, type ChoreHistoryItem } from '../lib/occurrences';
 import { choresCache, fetchChores, type Chore } from '../lib/chores';
 
@@ -75,7 +76,7 @@ export function ChoreHistoryPage() {
     );
   }
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayKst();
   const averageCycle = computeAverageCycle(history, today);
 
   return (
