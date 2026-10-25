@@ -206,6 +206,18 @@ export function CalendarPage() {
   const today = todayKst();
   const activeChores = chores.filter((c) => c.is_active);
 
+  // 달 이동: 새 달의 캐시 데이터(없으면 로딩 상태)를 커서와 같은 순간에 바꿔서, 이전 달 항목이 남아 빈 칸으로
+  // 한 프레임 깜빡이지 않게 한다. 실제 조회는 cursor가 바뀐 뒤 effect가 이어서 한다.
+  function moveMonth(delta: -1 | 1) {
+    const d = new Date(cursor.year, cursor.month + delta, 1);
+    const next = { year: d.getFullYear(), month: d.getMonth() };
+    const cached = anonKey ? monthOccurrencesCache.get(`${anonKey}:${toMonthParam(next.year, next.month)}`) : undefined;
+    setOccurrences(cached ?? []);
+    setLoading(!cached);
+    setSelectedDate(null);
+    setCursor(next);
+  }
+
   async function handleAddManual() {
     if (!anonKey || !selectedDate || !pickedChoreId) return;
     setAddingChoreId(pickedChoreId);
@@ -313,18 +325,14 @@ export function CalendarPage() {
             variant="clear"
             name="icon-arrow-left-mono"
             iconSize={20}
-            onClick={() =>
-              setCursor((c) => (c.month === 0 ? { year: c.year - 1, month: 11 } : { year: c.year, month: c.month - 1 }))
-            }
+            onClick={() => moveMonth(-1)}
           />
           <IconButton
             aria-label="다음 달"
             variant="clear"
             name="icon-arrow-right-mono"
             iconSize={20}
-            onClick={() =>
-              setCursor((c) => (c.month === 11 ? { year: c.year + 1, month: 0 } : { year: c.year, month: c.month + 1 }))
-            }
+            onClick={() => moveMonth(1)}
           />
         </div>
       </div>
