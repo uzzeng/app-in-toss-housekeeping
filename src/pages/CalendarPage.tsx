@@ -392,7 +392,10 @@ export function CalendarPage() {
                 const isSelected = selectedDate === dateKey;
                 const isToday = dateKey === today;
                 const dot = summarizeDotColor(items, dateKey, today);
-                const shown = items.slice(0, MAX_ITEMS_PER_CELL);
+                // 칸에서는 해야 할 일(미완료)이 가려지지 않도록 미완료를 먼저 보여준다 (상세 목록 순서는 그대로).
+                const shown = [...items]
+                  .sort((x, y) => Number(x.status === 'done') - Number(y.status === 'done'))
+                  .slice(0, MAX_ITEMS_PER_CELL);
                 const hiddenCount = items.length - shown.length;
                 return (
                   <div
@@ -411,29 +414,33 @@ export function CalendarPage() {
                         pointerEvents: 'none',
                       }}
                     >
+                      {/* 선택/오늘 상자와 점은 날짜 숫자와 같은 규칙(위치 보간)으로 따라 움직인다 */}
                       <div
                         style={{
                           position: 'absolute',
-                          top: '50%',
-                          left: '50%',
+                          top: 6 - 6 * progress,
+                          left: `calc(4px + (50% - 4px) * ${1 - progress})`,
                           width: 32,
                           height: 32,
-                          transform: 'translate(-50%, -50%)',
+                          transform: `translateX(${-50 * (1 - progress)}%)`,
                           borderRadius: 10,
                           border: isToday ? `1px solid ${adaptive.blue500}` : '1px solid transparent',
                           background: isSelected ? adaptive.blue50 : undefined,
+                          boxSizing: 'border-box',
+                          transition: dragging ? 'none' : 'top 220ms ease, left 220ms ease, transform 220ms ease',
                         }}
                       />
                       <span
                         style={{
                           position: 'absolute',
-                          top: 28,
-                          left: '50%',
+                          top: 28 - 6 * progress,
+                          left: `calc(4px + (50% - 4px) * ${1 - progress})`,
                           width: 4,
                           height: 4,
-                          marginLeft: -2,
+                          transform: `translateX(${-50 * (1 - progress)}%)`,
                           borderRadius: '50%',
                           background: dot ? dotColorHex(dot) : 'transparent',
+                          transition: dragging ? 'none' : 'top 220ms ease, left 220ms ease, transform 220ms ease',
                         }}
                       />
                     </div>
