@@ -116,6 +116,22 @@ export function CalendarPage() {
   // 달력 전체/축소 전환의 진행도(0=축소, 1=전체). 손잡이를 끄는 동안만 dragP에 값이 있고, 그 외에는 선택 여부로 정해진다.
   const [dragP, setDragP] = useState<number | null>(null);
   const dragRef = useRef<{ startY: number; moved: boolean } | null>(null);
+  const progress = dragP ?? (selectedDate !== null ? 0 : 1);
+  const dragging = dragP !== null;
+
+  // 오늘/선택 표시 박스는 중간 상태에서 움직이지 않는다: 축소가 끝나면 작은 박스, 전체로 펼쳐지면 큰 박스만 보이고,
+  // 늘리거나 줄이는 동안(220ms)에는 둘 다 숨긴다.
+  const settledBox: 'small' | 'big' | 'none' = dragging || (progress !== 0 && progress !== 1) ? 'none' : progress === 0 ? 'small' : 'big';
+  const [boxMode, setBoxMode] = useState<'small' | 'big' | 'none'>(settledBox);
+  useEffect(() => {
+    if (settledBox === 'none') {
+      setBoxMode('none');
+      return;
+    }
+    setBoxMode((cur) => (cur === settledBox ? cur : 'none'));
+    const timer = setTimeout(() => setBoxMode(settledBox), 230);
+    return () => clearTimeout(timer);
+  }, [settledBox]);
 
   function loadOccurrences() {
     if (!anonKey) return;
@@ -163,8 +179,6 @@ export function CalendarPage() {
   }
 
   const weeks = buildMonthGrid(cursor.year, cursor.month);
-  const progress = dragP ?? (selectedDate !== null ? 0 : 1);
-  const dragging = dragP !== null;
   const rowHeight = COMPACT_ROW_HEIGHT + (FULL_ROW_HEIGHT - COMPACT_ROW_HEIGHT) * progress;
   // 손잡이를 끄는 거리와 달력이 늘어나는 높이를 같게 맞춰서 손가락과 손잡이가 같이 움직이게 한다.
   const dragTravel = weeks.length * (FULL_ROW_HEIGHT - COMPACT_ROW_HEIGHT);
@@ -422,20 +436,20 @@ export function CalendarPage() {
                         pointerEvents: 'none',
                       }}
                     >
-                      {/* 선택/오늘 상자와 점은 날짜 숫자와 같은 규칙(위치 보간)으로 따라 움직인다 */}
+                      {/* 선택/오늘 상자: 축소가 끝났을 때만 보이는 고정 위치 박스 (펼치는 동안에는 즉시 숨김) */}
                       <div
                         style={{
                           position: 'absolute',
-                          top: 6 - 6 * progress,
-                          left: `calc(4px + (50% - 4px) * ${1 - progress})`,
+                          top: 6,
+                          left: '50%',
                           width: 32,
                           height: 32,
-                          transform: `translateX(${-50 * (1 - progress)}%)`,
+                          transform: 'translateX(-50%)',
                           borderRadius: 10,
                           border: isToday ? `1px solid ${adaptive.blue500}` : '1px solid transparent',
                           background: isSelected ? adaptive.blue50 : undefined,
                           boxSizing: 'border-box',
-                          transition: dragging ? 'none' : 'top 220ms ease, left 220ms ease, transform 220ms ease',
+                          opacity: boxMode === 'small' ? 1 : 0,
                         }}
                       />
                       <span
@@ -460,7 +474,7 @@ export function CalendarPage() {
                         boxSizing: 'border-box',
                         padding: '4px 2px',
                         overflow: 'hidden',
-                        border: isToday ? `1px solid ${adaptive.blue500}` : '1px solid transparent',
+                        border: isToday && boxMode === 'big' ? `1px solid ${adaptive.blue500}` : '1px solid transparent',
                         opacity: progress,
                         transition: motion,
                         pointerEvents: 'none',
