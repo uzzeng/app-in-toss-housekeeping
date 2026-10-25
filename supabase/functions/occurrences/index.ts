@@ -352,12 +352,14 @@ export default {
         if (doneError) return Response.json({ error: doneError.message }, { status: 500 });
         if (pendingError) return Response.json({ error: pendingError.message }, { status: 500 });
 
-        // 다음 예정일 표시: chore별 "가장 최근 완료건"에만, 이미 생성돼 있는 다음 occurrence(미완료)의
-        // 예정일을 새로 계산하지 않고 그대로 붙여서 보여준다.
+        // 다음 예정일 표시: chore별 "가장 최근 완료건"에만 붙인다. 이미 생성돼 있는 다음 occurrence(미완료)가
+        // 있으면 그 예정일을 그대로 쓰고, 없으면(주기가 길어 아직 생성 범위 밖일 때, 예: 12주 주기) 생성 때 쓰는
+        // 것과 같은 계산 함수로 완료일 기준 다음 예정일을 계산해 표시만 한다(DB에는 만들지 않는다).
         const doneList = (doneData ?? []) as Array<{ id: string; chore_id: string; completed_date: string }>;
         const choreIds = [...new Set(doneList.map((o) => o.chore_id))];
 
         const latestDoneIdByChore = new Map<string, string>();
+        const latestDoneDateByChore = new Map<string, string>();
         const nextScheduledByChore = new Map<string, string>();
 
         if (choreIds.length > 0) {
@@ -376,11 +378,31 @@ export default {
               .order("scheduled_date", { ascending: true }),
           ]);
 
-          for (const row of (allDoneForChores ?? []) as Array<{ id: string; chore_id: string }>) {
-            if (!latestDoneIdByChore.has(row.chore_id)) latestDoneIdByChore.set(row.chore_id, row.id);
+          for (const row of (allDoneForChores ?? []) as Array<{ id: string; chore_id: string; completed_date: string }>) {
+            if (!latestDoneIdByChore.has(row.chore_id)) {
+              latestDoneIdByChore.set(row.chore_id, row.id);
+              latestDoneDateByChore.set(row.chore_id, row.completed_date);
+            }
           }
           for (const row of (allPendingForChores ?? []) as Array<{ chore_id: string; scheduled_date: string }>) {
             if (!nextScheduledByChore.has(row.chore_id)) nextScheduledByChore.set(row.chore_id, row.scheduled_date);
+          }
+
+          // 생성돼 있는 다음 회차가 없는 활성 chore만 완료일 기준으로 계산한다 (비활성 chore는 다음 예정이 없다).
+          const needCompute = choreIds.filter((id) => !nextScheduledByChore.has(id));
+          if (needCompute.length > 0) {
+            const { data: computeChores } = await ctx.supabaseAdmin
+              .from("chores")
+              .select("*")
+              .in("id", needCompute)
+              .eq("is_active", true);
+            for (const chore of (computeChores ?? []) as Chore[]) {
+              const lastDone = latestDoneDateByChore.get(chore.id);
+              if (!lastDone) continue;
+              // ensureOccurrencesUpToBatch와 같은 기준: 완료 기록이 기준일이고, 매달 기준일은 그 완료일의 일(day).
+              const next = computeNextScheduledDate(chore, lastDone, Number(lastDone.slice(8, 10)));
+              if (next) nextScheduledByChore.set(chore.id, next);
+            }
           }
         }
 
