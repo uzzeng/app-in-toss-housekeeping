@@ -395,7 +395,12 @@ export function CalendarPage() {
                 const shown = items.slice(0, MAX_ITEMS_PER_CELL);
                 const hiddenCount = items.length - shown.length;
                 return (
-                  <div key={di} onClick={() => setSelectedDate(dateKey)} style={{ ...cellStyle, cursor: 'pointer' }}>
+                  <div
+                    key={di}
+                    // 선택된 날짜를 다시 누르면 선택을 해제하고 전체 달력으로 돌아간다
+                    onClick={() => setSelectedDate(isSelected ? null : dateKey)}
+                    style={{ ...cellStyle, cursor: 'pointer' }}
+                  >
                     {/* 축소 층: 선택/오늘 표시 상자와 날짜별 점 하나 (진행도가 낮을수록 진하게) */}
                     <div
                       style={{
