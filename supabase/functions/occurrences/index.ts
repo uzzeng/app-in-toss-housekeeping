@@ -262,6 +262,22 @@ export default {
         return Response.json({ overdueCount: (data ?? []).length });
       }
 
+      if (rangeParam === "overdue") {
+        // 홈 화면 "밀린 집안일" 탭용: 예정일이 지났는데 아직 완료하지 않은 항목 전체를
+        // 가장 오래 밀린 순(scheduled_date 오름차순)으로 반환. overdueCount와 동일한 조건.
+        const { data, error } = await ctx.supabaseAdmin
+          .from("chore_occurrences")
+          .select("*, chores!inner(id, name, type, user_id, is_active)")
+          .eq("chores.user_id", userId)
+          .eq("chores.is_active", true)
+          .eq("status", "pending")
+          .lt("scheduled_date", today)
+          .order("scheduled_date", { ascending: true });
+
+        if (error) return Response.json({ error: error.message }, { status: 500 });
+        return Response.json({ occurrences: data });
+      }
+
       if (rangeParam === "history") {
         const choreId = url.searchParams.get("choreId");
         if (!choreId) {
@@ -395,9 +411,12 @@ export default {
         .eq("chores.is_active", true);
 
       if (range === "today") {
-        // 오늘 할 일 박스는 완료 여부와 무관하게 오늘 예정된 항목을 모두 보여주고,
-        // 프론트엔드가 완료 여부를 체크 표시로 구분한다 (재탭으로 완료 해제 가능해야 하므로).
-        query = query.eq("scheduled_date", today);
+        // 오늘 할 일 박스: 미완료는 예정일 기준, 완료는 완료일 기준(캘린더와 동일한 PRD 규칙)으로
+        // 오늘에 속하는 항목만 보여준다. 완료 항목도 오늘 한 것이면 남겨서 재탭으로 해제할 수 있게 하고,
+        // 예정일이 오늘이어도 미리 끝낸 항목은 제외한다. 체크 표시 구분은 프론트엔드가 한다.
+        query = query.or(
+          `and(status.eq.pending,scheduled_date.eq.${today}),and(status.eq.done,completed_date.eq.${today})`,
+        );
       } else {
         // 일주일 예정 박스는 PRD상 "앞으로 해야 할 일"만 보여주는 보기 전용이므로 미완료만 조회.
         query = query.eq("status", "pending").gt("scheduled_date", today).lte("scheduled_date", untilDate);

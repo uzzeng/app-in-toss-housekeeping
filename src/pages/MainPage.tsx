@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Asset, IconButton, List, ListRow, Post, useDialog } from '@toss/tds-mobile';
+import { Asset, IconButton, List, ListRow, Post, SegmentedControl, useDialog } from '@toss/tds-mobile';
 import { adaptive } from '@toss/tds-colors';
 import { useCurrentUser } from '../hooks/useAnonymousKey';
 import { ErrorBanner } from '../components/ErrorBanner';
@@ -8,9 +8,11 @@ import { toDisplayErrorMessage } from '../lib/errorMessage';
 import { choreCountCache, fetchChoreCount } from '../lib/chores';
 import {
   fetchOverdueCount,
+  fetchOverdueOccurrences,
   fetchTodayOccurrences,
   fetchWeekOccurrences,
   overdueCountCache,
+  overdueOccurrencesCache,
   setOccurrenceCompleted,
   todayOccurrencesCache,
   weekOccurrencesCache,
@@ -22,6 +24,15 @@ function formatDateLabel(dateStr: string): string {
   return `${d.getMonth() + 1}.${d.getDate()}`;
 }
 
+function daysOverdue(scheduledDate: string): number {
+  const scheduled = new Date(`${scheduledDate}T00:00:00`);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Math.round((today.getTime() - scheduled.getTime()) / (1000 * 60 * 60 * 24));
+}
+
+type UpcomingTab = 'upcoming' | 'overdue';
+
 export function MainPage() {
   const currentUser = useCurrentUser();
   const navigate = useNavigate();
@@ -29,10 +40,16 @@ export function MainPage() {
   const anonKey = currentUser.status === 'success' ? currentUser.user.anonKey : null;
   const [today, setToday] = useState<Occurrence[]>(() => (anonKey ? todayOccurrencesCache.get(anonKey) ?? [] : []));
   const [week, setWeek] = useState<Occurrence[]>(() => (anonKey ? weekOccurrencesCache.get(anonKey) ?? [] : []));
+  const [overdue, setOverdue] = useState<Occurrence[]>(() => (anonKey ? overdueOccurrencesCache.get(anonKey) ?? [] : []));
   const [overdueCount, setOverdueCount] = useState(() => (anonKey ? overdueCountCache.get(anonKey) ?? 0 : 0));
   const [choreCount, setChoreCount] = useState(() => (anonKey ? choreCountCache.get(anonKey) ?? null : null) as number | null);
   const [loading, setLoading] = useState(() => !(anonKey && todayOccurrencesCache.has(anonKey)));
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  // 밀린 집안일이 있으면 그쪽을 먼저 보여주고, 없으면 예정된 집안일을 기본으로 보여준다.
+  // 사용자가 탭을 직접 바꾼 뒤에는 데이터 새로고침으로 되돌리지 않는다.
+  const [upcomingTab, setUpcomingTab] = useState<UpcomingTab>('upcoming');
+  const tabTouched = useRef(false);
+  const upcomingBoxRef = useRef<HTMLDivElement>(null);
 
   function load() {
     if (!anonKey) return;
@@ -42,14 +59,17 @@ export function MainPage() {
     Promise.all([
       fetchTodayOccurrences(anonKey),
       fetchWeekOccurrences(anonKey),
+      fetchOverdueOccurrences(anonKey),
       fetchOverdueCount(anonKey),
       fetchChoreCount(anonKey),
     ])
-      .then(([todayList, weekList, overdue, count]) => {
+      .then(([todayList, weekList, overdueList, overdueN, count]) => {
         setToday(todayList);
         setWeek(weekList);
-        setOverdueCount(overdue);
+        setOverdue(overdueList);
+        setOverdueCount(overdueN);
         setChoreCount(count);
+        if (!tabTouched.current) setUpcomingTab(overdueN > 0 ? 'overdue' : 'upcoming');
       })
       .catch((error: unknown) => setErrorMessage(toDisplayErrorMessage(error)))
       .finally(() => setLoading(false));
@@ -127,7 +147,12 @@ export function MainPage() {
             {overdueCount > 0 && (
               <button
                 type="button"
-                onClick={() => navigate('/calendar')}
+                onClick={() => {
+                  tabTouched.current = true;
+                  setUpcomingTab('overdue');
+                  // 이미 밀린 탭이어도 눌렀다는 반응이 보이도록, 탭 박스가 화면 밖이면 그쪽으로 이동한다.
+                  upcomingBoxRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }}
                 className="speech-bubble"
                 style={{
                   position: 'relative',
@@ -245,16 +270,48 @@ export function MainPage() {
             )}
           </div>
 
-          {/* 앞으로 일주일 예정된 일 (보기 전용) */}
-          <div style={{ border: `1px solid ${adaptive.grey100}`, borderRadius: 16, padding: '16px 0' }}>
-            <Post.H4 paddingBottom={16} style={{ padding: '0 16px 16px' }} color={adaptive.greyOpacity900}>
-              예정된 집안일
-            </Post.H4>
-            {week.length === 0 ? (
-              <p style={{ color: adaptive.grey500, padding: '0 16px' }}>앞으로 일주일간 예정된 집안일이 없어요.</p>
+          {/* 예정된 집안일 / 밀린 집안일 (둘 다 보기 전용) */}
+          <div ref={upcomingBoxRef} style={{ border: `1px solid ${adaptive.grey100}`, borderRadius: 16, padding: '16px 0' }}>
+            <div style={{ padding: '0 16px 16px' }}>
+              <SegmentedControl value={upcomingTab} onChange={(value) => {
+                tabTouched.current = true;
+                setUpcomingTab(value as UpcomingTab);
+              }}>
+                <SegmentedControl.Item value="upcoming" style={{ fontSize: 13 }}>
+                  예정된 집안일
+                </SegmentedControl.Item>
+                <SegmentedControl.Item value="overdue" style={{ fontSize: 13 }}>
+                  밀린 집안일
+                </SegmentedControl.Item>
+              </SegmentedControl>
+            </div>
+            {upcomingTab === 'upcoming' ? (
+              week.length === 0 ? (
+                <p style={{ color: adaptive.grey500, padding: '0 16px' }}>앞으로 일주일간 예정된 집안일이 없어요.</p>
+              ) : (
+                <List>
+                  {week.map((o) => (
+                    <ListRow
+                      key={o.id}
+                      left={<ListRow.LeftText>{formatDateLabel(o.scheduled_date)}</ListRow.LeftText>}
+                      contents={
+                        <ListRow.Texts
+                          type="1RowTypeA"
+                          top={o.chores.name}
+                          topProps={{ color: adaptive.grey700, typography: 'st10' }}
+                        />
+                      }
+                      verticalPadding="small"
+                      horizontalPadding="small"
+                    />
+                  ))}
+                </List>
+              )
+            ) : overdue.length === 0 ? (
+              <p style={{ color: adaptive.grey500, padding: '0 16px' }}>밀린 집안일이 없어요.</p>
             ) : (
               <List>
-                {week.map((o) => (
+                {overdue.map((o) => (
                   <ListRow
                     key={o.id}
                     left={<ListRow.LeftText>{formatDateLabel(o.scheduled_date)}</ListRow.LeftText>}
@@ -264,6 +321,11 @@ export function MainPage() {
                         top={o.chores.name}
                         topProps={{ color: adaptive.grey700, typography: 'st10' }}
                       />
+                    }
+                    right={
+                      <span style={{ fontSize: 12, color: adaptive.red500, whiteSpace: 'nowrap' }}>
+                        {daysOverdue(o.scheduled_date)}일 지남
+                      </span>
                     }
                     verticalPadding="small"
                     horizontalPadding="small"

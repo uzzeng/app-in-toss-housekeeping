@@ -72,6 +72,19 @@ export async function fetchOverdueCount(anonKey: string): Promise<number> {
   return overdueCount;
 }
 
+// 홈 화면 "밀린 집안일" 탭용 캐시 — today/week와 같은 재진입 즉시 표시 패턴
+export const overdueOccurrencesCache = new Map<string, Occurrence[]>();
+
+export async function fetchOverdueOccurrences(anonKey: string): Promise<Occurrence[]> {
+  const res = await fetch(
+    `${FUNCTIONS_URL}/occurrences?anonKey=${encodeURIComponent(anonKey)}&range=overdue`,
+    { headers },
+  );
+  const { occurrences } = await parseOrThrow<{ occurrences: Occurrence[] }>(res);
+  overdueOccurrencesCache.set(anonKey, occurrences);
+  return occurrences;
+}
+
 export interface ChoreHistoryItem {
   id: string;
   completed_date: string;

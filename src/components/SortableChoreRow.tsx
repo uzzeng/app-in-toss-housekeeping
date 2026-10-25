@@ -14,13 +14,18 @@ export function SortableChoreRow({ chore, description }: { chore: Chore; descrip
         transform: CSS.Transform.toString(transform),
         transition,
         opacity: isDragging ? 0.5 : 1,
-        touchAction: 'none',
       }}
-      {...attributes}
-      {...listeners}
     >
       <ListRow
-        left={<Asset.Icon name="icon-line-three-mono" color={adaptive.grey400} aria-hidden={true} />}
+        left={
+          <div
+            {...attributes}
+            {...listeners}
+            style={{ padding: 12, margin: -12, touchAction: 'none', cursor: 'grab' }}
+          >
+            <Asset.Icon name="icon-line-three-mono" color={adaptive.grey400} aria-hidden={true} />
+          </div>
+        }
         contents={
           <ListRow.Texts
             type="2RowTypeA"
