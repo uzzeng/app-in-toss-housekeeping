@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { BottomSheet, Button, Chip, ChipItem, Checkbox, IconButton, useDialog } from '@toss/tds-mobile';
 import { adaptive } from '@toss/tds-colors';
 import { useCurrentUser } from '../hooks/useAnonymousKey';
@@ -18,8 +18,6 @@ import { Skeleton } from '../components/Skeleton';
 
 const WEEKDAY = ['일', '월', '화', '수', '목', '금', '토'];
 
-type DotColor = 'blue' | 'red' | 'grey' | null;
-
 function toMonthParam(year: number, month0to11: number): string {
   return `${year}-${String(month0to11 + 1).padStart(2, '0')}`;
 }
@@ -29,7 +27,9 @@ function displayDateOf(o: Occurrence): string {
   return o.status === 'done' && o.completed_date ? o.completed_date : o.scheduled_date;
 }
 
-// 그 날짜에 속한 항목들을 하나의 점 색으로 요약: 미완료가 남았으면 지난 날은 빨강, 오늘/미래는 회색. 모두 완료했으면 파랑.
+type DotColor = 'blue' | 'red' | 'grey' | null;
+
+// 축소 달력에서 그 날짜에 속한 항목들을 하나의 점 색으로 요약: 미완료가 남았으면 지난 날은 빨강, 오늘/미래는 회색. 모두 완료했으면 파랑.
 function summarizeDotColor(items: Occurrence[], dateKey: string, today: string): DotColor {
   if (items.length === 0) return null;
   const hasPending = items.some((o) => o.status !== 'done');
@@ -42,6 +42,18 @@ function dotColorHex(dot: DotColor): string {
   if (dot === 'red') return adaptive.red500;
   return adaptive.grey400;
 }
+
+// 전체 달력 칸 안의 항목별 점 색: 완료는 파랑, 지난 날 미완료는 빨강, 그 외는 회색 (summarizeDotColor와 같은 규칙을 항목 단위로).
+function itemDotColor(o: Occurrence, today: string): string {
+  if (o.status === 'done') return adaptive.blue500;
+  return o.scheduled_date < today ? adaptive.red500 : adaptive.grey400;
+}
+
+// 전체 달력 모드의 한 주(행) 높이와 칸 하나에 보여줄 항목 수. 넘치면 "+N"으로 표시한다.
+const FULL_ROW_HEIGHT = 92;
+const MAX_ITEMS_PER_CELL = 3;
+// 날짜를 선택해 달력이 축소됐을 때의 한 주 높이.
+const COMPACT_ROW_HEIGHT = 44;
 
 function formatShortDate(dateKey: string): string {
   const [, m, d] = dateKey.split('-');
@@ -91,8 +103,8 @@ export function CalendarPage() {
   );
   const [loading, setLoading] = useState(() => !(monthCacheKey && monthOccurrencesCache.has(monthCacheKey)));
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  // 캘린더 진입 시에는 오늘 날짜가 기본으로 선택되어 있어야 한다.
-  const [selectedDate, setSelectedDate] = useState<string | null>(() => todayKst());
+  // 캘린더 진입 시에는 선택된 날짜 없이 전체 달력을 보여준다.
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [chores, setChores] = useState<Chore[]>(() => (anonKey ? choresCache.get(anonKey) ?? [] : []));
   const [addingChoreId, setAddingChoreId] = useState<string | null>(null);
   const [pickedChoreId, setPickedChoreId] = useState<string | null>(null);
@@ -100,7 +112,10 @@ export function CalendarPage() {
   // "다른 날 완료" 날짜 피커: 대상 occurrence와 피커 자체의 월 커서(현재 캘린더 월과 독립)
   const [backdatingOccurrence, setBackdatingOccurrence] = useState<Occurrence | null>(null);
   const [pickerCursor, setPickerCursor] = useState({ year: 0, month: 0 });
-  const isFirstLoad = useRef(true);
+
+  // 달력 전체/축소 전환의 진행도(0=축소, 1=전체). 손잡이를 끄는 동안만 dragP에 값이 있고, 그 외에는 선택 여부로 정해진다.
+  const [dragP, setDragP] = useState<number | null>(null);
+  const dragRef = useRef<{ startY: number; moved: boolean } | null>(null);
 
   function loadOccurrences() {
     if (!anonKey) return;
@@ -114,12 +129,8 @@ export function CalendarPage() {
 
   useEffect(() => {
     if (!anonKey) return;
-    // 최초 진입 시에는 오늘 날짜 선택을 유지하고, 이후 달 이동에서만 선택을 해제한다.
-    if (isFirstLoad.current) {
-      isFirstLoad.current = false;
-    } else {
-      setSelectedDate(null);
-    }
+    // 달을 옮기면 선택을 해제하고 전체 달력으로 돌아간다.
+    setSelectedDate(null);
     loadOccurrences();
   }, [anonKey, cursor]);
 
@@ -152,6 +163,46 @@ export function CalendarPage() {
   }
 
   const weeks = buildMonthGrid(cursor.year, cursor.month);
+  const progress = dragP ?? (selectedDate !== null ? 0 : 1);
+  const dragging = dragP !== null;
+  const rowHeight = COMPACT_ROW_HEIGHT + (FULL_ROW_HEIGHT - COMPACT_ROW_HEIGHT) * progress;
+  // 손잡이를 끄는 거리와 달력이 늘어나는 높이를 같게 맞춰서 손가락과 손잡이가 같이 움직이게 한다.
+  const dragTravel = weeks.length * (FULL_ROW_HEIGHT - COMPACT_ROW_HEIGHT);
+  const motion = dragging ? 'none' : 'height 220ms ease, opacity 220ms ease';
+
+  function dragProgressOf(clientY: number): number {
+    const d = dragRef.current;
+    if (!d) return 0;
+    return Math.max(0, Math.min(1, (clientY - d.startY) / dragTravel));
+  }
+
+  function handleHandlePointerDown(e: ReactPointerEvent<HTMLDivElement>) {
+    e.currentTarget.setPointerCapture(e.pointerId);
+    dragRef.current = { startY: e.clientY, moved: false };
+  }
+
+  function handleHandlePointerMove(e: ReactPointerEvent<HTMLDivElement>) {
+    const d = dragRef.current;
+    if (!d) return;
+    if (!d.moved && Math.abs(e.clientY - d.startY) <= 4) return;
+    d.moved = true;
+    setDragP(dragProgressOf(e.clientY));
+  }
+
+  // 놓았을 때: 탭이거나 40% 이상 열었으면 전체 달력으로, 아니면 축소 상태로 되돌린다.
+  function handleHandlePointerUp(e: ReactPointerEvent<HTMLDivElement>) {
+    const d = dragRef.current;
+    if (!d) return;
+    const opened = !d.moved || dragProgressOf(e.clientY) > 0.4;
+    dragRef.current = null;
+    if (opened) setSelectedDate(null);
+    setDragP(null);
+  }
+
+  function handleHandlePointerCancel() {
+    dragRef.current = null;
+    setDragP(null);
+  }
   const today = todayKst();
   const activeChores = chores.filter((c) => c.is_active);
 
@@ -306,7 +357,7 @@ export function CalendarPage() {
             {Array.from({ length: 5 }, (_, wi) => (
               <tr key={wi}>
                 {Array.from({ length: 7 }, (_, di) => (
-                  <td key={di} style={{ height: 44, textAlign: 'center', padding: 0 }}>
+                  <td key={di} style={{ height: FULL_ROW_HEIGHT, textAlign: 'center', verticalAlign: 'top', padding: '8px 0 0' }}>
                     <div style={{ display: 'flex', justifyContent: 'center' }}>
                       <Skeleton width={32} height={32} borderRadius={10} />
                     </div>
@@ -317,70 +368,159 @@ export function CalendarPage() {
           </tbody>
         </table>
       ) : (
-        <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
-          <thead>
-            <tr>
-              {WEEKDAY.map((w) => (
-                <th
-                  key={w}
-                  style={{ fontSize: 12, color: '#888', fontWeight: 'normal', padding: 0, textAlign: 'center' }}
-                >
-                  {w}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {weeks.map((week, wi) => (
-              <tr key={wi}>
-                {week.map((day, di) => {
-                  if (day === null) return <td key={di} style={{ height: 44 }} />;
-                  const dateKey = `${cursor.year}-${String(cursor.month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                  const items = byDate.get(dateKey) ?? [];
-                  const isSelected = selectedDate === dateKey;
-                  const isToday = dateKey === today;
-                  const dot = summarizeDotColor(items, dateKey, today);
-                  return (
-                    <td
-                      key={di}
-                      onClick={() => setSelectedDate(isSelected ? null : dateKey)}
-                      style={{ height: 44, textAlign: 'center', cursor: 'pointer', padding: 0 }}
+        <div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))' }}>
+            {WEEKDAY.map((w) => (
+              <div key={w} style={{ fontSize: 12, color: '#888', textAlign: 'center', paddingBottom: 4 }}>
+                {w}
+              </div>
+            ))}
+          </div>
+          {weeks.map((week, wi) => (
+            <div key={wi} style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))' }}>
+              {week.map((day, di) => {
+                const cellStyle = {
+                  position: 'relative' as const,
+                  height: rowHeight,
+                  overflow: 'hidden',
+                  borderTop: `1px solid ${adaptive.grey100}`,
+                  transition: motion,
+                };
+                if (day === null) return <div key={di} style={cellStyle} />;
+                const dateKey = `${cursor.year}-${String(cursor.month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                const items = byDate.get(dateKey) ?? [];
+                const isSelected = selectedDate === dateKey;
+                const isToday = dateKey === today;
+                const dot = summarizeDotColor(items, dateKey, today);
+                const shown = items.slice(0, MAX_ITEMS_PER_CELL);
+                const hiddenCount = items.length - shown.length;
+                return (
+                  <div key={di} onClick={() => setSelectedDate(dateKey)} style={{ ...cellStyle, cursor: 'pointer' }}>
+                    {/* 축소 층: 선택/오늘 표시 상자와 날짜별 점 하나 (진행도가 낮을수록 진하게) */}
+                    <div
+                      style={{
+                        position: 'absolute',
+                        inset: 0,
+                        opacity: 1 - progress,
+                        transition: motion,
+                        pointerEvents: 'none',
+                      }}
                     >
                       <div
                         style={{
-                          display: 'inline-flex',
-                          flexDirection: 'column',
-                          alignItems: 'center',
-                          justifyContent: 'center',
+                          position: 'absolute',
+                          top: '50%',
+                          left: '50%',
                           width: 32,
                           height: 32,
+                          transform: 'translate(-50%, -50%)',
                           borderRadius: 10,
-                          border: isToday ? `1px solid ${adaptive.grey400}` : '1px solid transparent',
+                          border: isToday ? `1px solid ${adaptive.blue500}` : '1px solid transparent',
                           background: isSelected ? adaptive.blue50 : undefined,
                         }}
-                      >
-                        <span style={{ fontSize: 14, color: adaptive.grey900 }}>{day}</span>
-                        <span
-                          style={{
-                            width: 4,
-                            height: 4,
-                            borderRadius: '50%',
-                            marginTop: 1,
-                            background: dot ? dotColorHex(dot) : 'transparent',
-                          }}
-                        />
+                      />
+                      <span
+                        style={{
+                          position: 'absolute',
+                          top: 28,
+                          left: '50%',
+                          width: 4,
+                          height: 4,
+                          marginLeft: -2,
+                          borderRadius: '50%',
+                          background: dot ? dotColorHex(dot) : 'transparent',
+                        }}
+                      />
+                    </div>
+                    {/* 전체 층: "+N"과 점·이름 목록 (진행도가 높을수록 진하게). 날짜 숫자는 위의 공용 숫자를 쓴다 */}
+                    <div
+                      style={{
+                        position: 'absolute',
+                        inset: 0,
+                        boxSizing: 'border-box',
+                        padding: '4px 2px',
+                        overflow: 'hidden',
+                        border: isToday ? `1px solid ${adaptive.blue500}` : '1px solid transparent',
+                        opacity: progress,
+                        transition: motion,
+                        pointerEvents: 'none',
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', height: 17, marginBottom: 2 }}>
+                        {hiddenCount > 0 && <span style={{ fontSize: 10, lineHeight: '17px', color: adaptive.grey500 }}>+{hiddenCount}</span>}
                       </div>
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                      {shown.map((o) => (
+                        <div key={o.id} style={{ display: 'flex', alignItems: 'center', gap: 3, height: 16 }}>
+                          <span
+                            style={{
+                              flexShrink: 0,
+                              width: 5,
+                              height: 5,
+                              borderRadius: '50%',
+                              background: itemDotColor(o, today),
+                            }}
+                          />
+                          <span
+                            style={{
+                              fontSize: 10,
+                              color: adaptive.grey800,
+                              whiteSpace: 'nowrap',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                            }}
+                          >
+                            {o.chores.name}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                    {/* 날짜 숫자는 하나만 두고, 진행도에 따라 가운데(축소) → 왼쪽 위(전체)로 위치와 크기를 옮긴다 */}
+                    <span
+                      style={{
+                        position: 'absolute',
+                        top: 10 - 6 * progress,
+                        left: `calc(4px + (50% - 4px) * ${1 - progress})`,
+                        transform: `translateX(${-50 * (1 - progress)}%)`,
+                        fontSize: 14 - 2 * progress,
+                        lineHeight: '17px',
+                        color: adaptive.grey900,
+                        transition: dragging ? 'none' : 'top 220ms ease, left 220ms ease, transform 220ms ease, font-size 220ms ease',
+                        zIndex: 1,
+                        pointerEvents: 'none',
+                      }}
+                    >
+                      {day}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+        </div>
       )}
 
       {selectedDate && (
-        <div style={{ marginTop: 16 }}>
+        <div style={{ marginTop: 0, opacity: 1 - progress, transition: dragging ? 'none' : 'opacity 220ms ease' }}>
+          {/* 손잡이: 아래로 끌면 달력이 손가락을 따라 펼쳐지고, 탭하면 바로 전체 달력으로 돌아간다 */}
+          <div
+            role="button"
+            aria-label="전체 달력 보기"
+            onPointerDown={handleHandlePointerDown}
+            onPointerMove={handleHandlePointerMove}
+            onPointerUp={handleHandlePointerUp}
+            onPointerCancel={handleHandlePointerCancel}
+            style={{
+              display: 'flex',
+              justifyContent: 'center',
+              padding: '10px 0 14px',
+              cursor: 'grab',
+              touchAction: 'none',
+              userSelect: 'none',
+              borderTop: `1px solid ${adaptive.grey100}`,
+            }}
+          >
+            <div style={{ width: 40, height: 4, borderRadius: 2, background: adaptive.grey300 }} />
+          </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
             <p style={{ fontWeight: 'bold', fontSize: 16, margin: 0 }}>{formatSelectedDateLabel(selectedDate)}</p>
             {selectedDate === today && (
