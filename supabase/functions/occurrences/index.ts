@@ -217,7 +217,11 @@ async function ensureOccurrencesUpToBatch(
   }
 
   if (toInsert.length > 0) {
-    await supabaseAdmin.from("chore_occurrences").insert(toInsert);
+    // 홈 화면이 today/week를 동시에 요청하면 두 요청이 같은 회차를 각각 만들려 한다.
+    // (chore_id, scheduled_date) 유일 제약 + ignoreDuplicates로 먼저 들어간 쪽만 남기고 나머지는 무시한다.
+    await supabaseAdmin
+      .from("chore_occurrences")
+      .upsert(toInsert, { onConflict: "chore_id,scheduled_date", ignoreDuplicates: true });
   }
 }
 
@@ -514,6 +518,9 @@ export default {
           .select("*, chores!inner(id, name, type, user_id)")
           .single();
 
+        if (error?.code === "23505") {
+          return Response.json({ error: "그 날짜에는 이미 이 집안일의 기록이 있어요." }, { status: 409 });
+        }
         if (error) return Response.json({ error: error.message }, { status: 500 });
 
         // 수기 입력 날짜 이후로 이미 생성돼 있던 미완료 예정 건은 이 날짜를 기준으로 다시 계산해야

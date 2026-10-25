@@ -71,6 +71,8 @@
 
 **인덱스**: `chore_occurrences_chore_id_idx` (`chore_id`), `chore_occurrences_scheduled_date_idx` (`scheduled_date`)
 
+**유일 제약** (2026-10-25 추가): `chore_occurrences_chore_date_key` — `UNIQUE (chore_id, scheduled_date)`. 홈 화면이 today/week를 동시에 요청하면 두 요청이 같은 회차를 각각 생성해 신규 집안일의 첫 조회에서 같은 예정일이 2줄 생기던 버그를 막기 위함. 회차 생성은 `upsert(… ignoreDuplicates)`로 충돌을 무시하고, 수기 입력이 같은 날짜의 기존 회차와 겹치면 409를 반환함.
+
 ## 관계
 
 ```
