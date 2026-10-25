@@ -268,12 +268,22 @@ export function MainPage() {
 
           {/* 예정된 집안일 / 밀린 집안일 (둘 다 보기 전용) */}
           <div ref={upcomingBoxRef} style={{ border: `1px solid ${adaptive.grey100}`, borderRadius: 16, padding: '16px 0' }}>
-            <div style={{ padding: '0 16px 16px' }}>
+            {/* 탭을 기본(small)보다 작게: 글자 크기는 TDS 타이포 변수(t5)를, 안쪽 여백은 .compact-segmented(index.css)를 덮어쓴다 */}
+            <div
+              className="compact-segmented"
+              style={
+                {
+                  padding: '0 16px 16px',
+                  '--tds-t-t5-text-fontSize': '15px',
+                  '--tds-t-t5-text-lineHeight': '22px',
+                } as React.CSSProperties
+              }
+            >
               <SegmentedControl value={upcomingTab} onChange={(value) => setUpcomingTab(value as UpcomingTab)}>
-                <SegmentedControl.Item value="upcoming" style={{ fontSize: 13 }}>
+                <SegmentedControl.Item value="upcoming">
                   예정된 집안일
                 </SegmentedControl.Item>
-                <SegmentedControl.Item value="overdue" style={{ fontSize: 13 }}>
+                <SegmentedControl.Item value="overdue">
                   {/* 글자와 배지를 같은 flex 줄에 두고 세로 중앙 정렬 (inline 배치면 baseline 때문에 배지가 아래로 처진다) */}
                   <span style={{ display: 'inline-flex', alignItems: 'center' }}>
                     밀린 집안일

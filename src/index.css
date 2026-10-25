@@ -165,3 +165,7 @@ code {
   background: #3182f6;
   animation: splash-progress 1.1s ease-in-out infinite;
 }
+
+.compact-segmented label {
+  padding: 5px 10px;
+}
