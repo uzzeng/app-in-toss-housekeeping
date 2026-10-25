@@ -45,10 +45,8 @@ export function MainPage() {
   const [choreCount, setChoreCount] = useState(() => (anonKey ? choreCountCache.get(anonKey) ?? null : null) as number | null);
   const [loading, setLoading] = useState(() => !(anonKey && todayOccurrencesCache.has(anonKey)));
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  // 밀린 집안일이 있으면 그쪽을 먼저 보여주고, 없으면 예정된 집안일을 기본으로 보여준다.
-  // 사용자가 탭을 직접 바꾼 뒤에는 데이터 새로고침으로 되돌리지 않는다.
+  // 항상 예정된 집안일로 시작하고, 밀린 집안일은 사용자가 탭(또는 말풍선)을 눌렀을 때만 보여준다.
   const [upcomingTab, setUpcomingTab] = useState<UpcomingTab>('upcoming');
-  const tabTouched = useRef(false);
   const upcomingBoxRef = useRef<HTMLDivElement>(null);
 
   function load() {
@@ -69,7 +67,6 @@ export function MainPage() {
         setOverdue(overdueList);
         setOverdueCount(overdueN);
         setChoreCount(count);
-        if (!tabTouched.current) setUpcomingTab(overdueN > 0 ? 'overdue' : 'upcoming');
       })
       .catch((error: unknown) => setErrorMessage(toDisplayErrorMessage(error)))
       .finally(() => setLoading(false));
@@ -148,7 +145,6 @@ export function MainPage() {
               <button
                 type="button"
                 onClick={() => {
-                  tabTouched.current = true;
                   setUpcomingTab('overdue');
                   // 이미 밀린 탭이어도 눌렀다는 반응이 보이도록, 탭 박스가 화면 밖이면 그쪽으로 이동한다.
                   upcomingBoxRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -273,15 +269,37 @@ export function MainPage() {
           {/* 예정된 집안일 / 밀린 집안일 (둘 다 보기 전용) */}
           <div ref={upcomingBoxRef} style={{ border: `1px solid ${adaptive.grey100}`, borderRadius: 16, padding: '16px 0' }}>
             <div style={{ padding: '0 16px 16px' }}>
-              <SegmentedControl value={upcomingTab} onChange={(value) => {
-                tabTouched.current = true;
-                setUpcomingTab(value as UpcomingTab);
-              }}>
+              <SegmentedControl value={upcomingTab} onChange={(value) => setUpcomingTab(value as UpcomingTab)}>
                 <SegmentedControl.Item value="upcoming" style={{ fontSize: 13 }}>
                   예정된 집안일
                 </SegmentedControl.Item>
                 <SegmentedControl.Item value="overdue" style={{ fontSize: 13 }}>
-                  밀린 집안일
+                  {/* 글자와 배지를 같은 flex 줄에 두고 세로 중앙 정렬 (inline 배치면 baseline 때문에 배지가 아래로 처진다) */}
+                  <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+                    밀린 집안일
+                    {overdueCount > 0 && (
+                      <span
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          minWidth: 18,
+                          height: 18,
+                          marginLeft: 6,
+                          padding: '0 5px',
+                          borderRadius: 9,
+                          background: adaptive.red400,
+                          color: '#fff',
+                          fontSize: 11,
+                          fontWeight: 700,
+                          lineHeight: 1,
+                          boxSizing: 'border-box',
+                        }}
+                      >
+                        {overdueCount}
+                      </span>
+                    )}
+                  </span>
                 </SegmentedControl.Item>
               </SegmentedControl>
             </div>
