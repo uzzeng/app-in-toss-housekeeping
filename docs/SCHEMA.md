@@ -2,7 +2,7 @@
 
 > Supabase(PostgreSQL)에 실제로 생성된 테이블 스키마 정리 (2026-08-11 기준). 기획 단계의 필드 초안은 [`docs/PRD.md`의 데이터 모델 초안](PRD.md#데이터-모델-초안) 참고. 이 문서는 실제 DB에 반영된 타입/제약조건까지 담은 구현 기준 문서입니다.
 
-> **2026-08-21 리전 마이그레이션**: 화면 전환 로딩 지연의 원인이 Supabase 프로젝트 리전이 도쿄(`ap-northeast-1`)로 설정되어 있던 것으로 확인되어, 서울(`ap-northeast-2`) 리전에 새 프로젝트(`housekeeping-seoul`, ref: `<seoul-project-ref>`)를 생성하고 전체 이전. 기존 도쿄 프로젝트(ref: `<tokyo-project-ref>`)는 롤백 대비로 당분간 보존, 이후 안정성 확인되면 정리 예정. 이전 절차: 스키마 재생성(RLS 정책 포함) → 데이터 이전(users 1건/chores 5건/chore_occurrences 14건, INSERT문 생성 방식으로 무손실 이전) → mTLS 인증서 secret 재등록 → Edge Function 5개 재배포 → Vault(project_url/send_reminders_api_key) 및 `pg_cron` 재설정 → 프론트엔드 `.env`의 `VITE_SUPABASE_URL`/`VITE_SUPABASE_PUBLISHABLE_KEY` 교체 후 재빌드. 실기기 검증 완료(데이터 노출, CRUD, 설정, 알림 발송 모두 정상). 초기 체감 속도 저하는 새로 배포된 Edge Function들의 콜드 스타트였고, 몇 차례 호출 후 도쿄 리전과 비슷하거나 더 빠른 수준으로 안정화됨.
+> **2026-08-21 리전 마이그레이션**: 화면 전환 로딩 지연의 원인이 Supabase 프로젝트 리전이 도쿄(`ap-northeast-1`)로 설정되어 있던 것으로 확인되어, 서울(`ap-northeast-2`) 리전에 새 프로젝트(`housekeeping-seoul`, ref: `<seoul-project-ref>`)를 생성하고 전체 이전. 기존 도쿄 프로젝트(ref: `<tokyo-project-ref>`)는 롤백 대비로 보존했으나, 2026-10-25에 삭제 완료. 보존 기간 중 도쿄의 `pg_cron`이 계속 돌면서 옛 알림 설정(10:09)으로 같은 유저에게 중복 알림이 갈 수 있었음 — 이전 후에는 옛 프로젝트의 크론부터 꺼야 함. 이전 절차: 스키마 재생성(RLS 정책 포함) → 데이터 이전(users 1건/chores 5건/chore_occurrences 14건, INSERT문 생성 방식으로 무손실 이전) → mTLS 인증서 secret 재등록 → Edge Function 5개 재배포 → Vault(project_url/send_reminders_api_key) 및 `pg_cron` 재설정 → 프론트엔드 `.env`의 `VITE_SUPABASE_URL`/`VITE_SUPABASE_PUBLISHABLE_KEY` 교체 후 재빌드. 실기기 검증 완료(데이터 노출, CRUD, 설정, 알림 발송 모두 정상). 초기 체감 속도 저하는 새로 배포된 Edge Function들의 콜드 스타트였고, 몇 차례 호출 후 도쿄 리전과 비슷하거나 더 빠른 수준으로 안정화됨.
 
 ## 개요
 
